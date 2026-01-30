@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
 def main():
     print("Hello from code-monkey!")
 
