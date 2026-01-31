@@ -11,10 +11,12 @@ Building core infrastructure for the multi-agent coding assistant.
 **Plans:** 4 plans in 4 waves
 
 Plans:
-- [ ] 01-01-PLAN.md — File discovery utility (pathlib glob with directory exclusion)
-- [ ] 01-02-PLAN.md — Code parser utility (AST-based class/function/import extraction)
-- [ ] 01-03-PLAN.md — Hash utilities (SHA-256 file hashing for change detection)
-- [ ] 01-04-PLAN.md — Integration tests and module finalization
+- [x] 01-01-PLAN.md — File discovery utility (pathlib glob with directory exclusion)
+- [x] 01-02-PLAN.md — Code parser utility (AST-based class/function/import extraction)
+- [x] 01-03-PLAN.md — Hash utilities (SHA-256 file hashing for change detection)
+- [x] 01-04-PLAN.md — Integration tests and module finalization
+
+**Status:** Complete ✓ (2026-01-31)
 
 **Details:**
 Building core utilities for the Project Librarian agent using Python standard library:
