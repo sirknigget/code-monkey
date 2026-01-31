@@ -1,8 +1,8 @@
 import pytest
-import asyncio
 from dotenv import load_dotenv
 
-from src.agents.web_researcher.web_researcher import WebResearcher
+from code_monkey.agents.web_researcher.web_researcher import WebResearcher
+from code_monkey.models.models import get_minimax_model
 
 load_dotenv(override=True)
 
@@ -10,9 +10,7 @@ load_dotenv(override=True)
 @pytest.mark.asyncio
 async def test_web_researcher_search():
     """Test the WebResearcher agent with a query about LangChain."""
-    from langchain_anthropic import ChatAnthropic
-
-    model = ChatAnthropic(model="MiniMax-M2.1", anthropic_api_url="https://api.minimax.io/anthropic")
+    model = get_minimax_model()
     researcher = await WebResearcher.create(model=model, headless=True)
 
     query = "What is the latest price of BTC and its recent trend?"

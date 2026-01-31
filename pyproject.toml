@@ -18,3 +18,5 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "lxml>=6.0.2",
 ]
+[tool.pytest.ini_options]
+pythonpath = ["."]
