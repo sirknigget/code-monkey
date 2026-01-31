@@ -20,18 +20,21 @@
 ## Naming Patterns
 
 **Files:**
-- Snake_case: `web_researcher.py`, `json_utils.py`, `test_google_search.py`
+- Snake_case: `web_researcher.py`, `json_utils.py`, `langchain_utils.py`
+- No `__init__.py` files in directories (no barrel files)
 
 **Classes:**
 - PascalCase: `SearchResult`, `WebResearcher`, `PlaywrightTools`
+- Base model classes inherit from `pydantic.BaseModel`
 
 **Functions:**
-- snake_case: `dump_object`, `google_search_tool`, `teardown`
+- snake_case: `dump_object`, `google_search_tool`, `teardown`, `last_message_content`
 - Public methods: `search()`, `get_tools()`, `initialize()`
+- Async functions: `async def search()`, `async def teardown()`
 
 **Variables:**
 - snake_case: `thread_id`, `playwright_tools`, `google_serper`
-- Private attributes: Leading underscore `_playwright`, `_browser`, `_tools`
+- Private attributes: Leading underscore `_playwright`, `_browser`, `_tools`, `_agent`
 
 **Constants:**
 - UPPER_SNAKE_CASE: `NUM_GOOGLE_RESULTS`
@@ -61,23 +64,17 @@
 ## Import Organization
 
 **Order:**
-1. Standard library imports (`asyncio`, `uuid`, `json`)
+1. Standard library imports (`uuid`, `json`, `typing`)
 2. Third-party imports (`langchain`, `pydantic`, `playwright`)
-3. Relative imports (`from src.agents.web_researcher.tools import ...`)
+3. Local application imports (`from code_monkey.agents.web_researcher.tools import ...`)
 
-**Examples from codebase:**
-```python
-import asyncio
-import uuid
-from typing import Any
-
-import langchain.chat_models.base
-from langchain.agents import create_agent
-from langchain_core.language_models import BaseChatModel
-from pydantic import Field, BaseModel
-
-from src.agents.web_researcher.tools import PlaywrightTools, google_search_tool
-```
+**Path Aliases:**
+- Absolute imports using package root `code_monkey`
+- Example from `web_researcher.py`:
+  ```python
+  from code_monkey.agents.web_researcher.tools import PlaywrightTools, google_search_tool
+  from code_monkey.utils.langchain_utils import last_message_content
+  ```
 
 ## Error Handling
 
@@ -111,20 +108,24 @@ class PlaywrightTools:
 ## Function Design
 
 **Parameters:**
-- Default values for optional parameters
+- Default values for optional parameters: `headless: bool = True`
 - Type hints for all parameters
 
 **Return Values:**
 - Explicit return types in type hints
-- Pydantic models for structured returns
+- Pydantic models for structured returns: `-> SearchResult`
+- Simple values for utilities
+
+**Class Methods:**
+- Factory pattern via `async classmethod create()`: `WebResearcher.create(model, headless)`
 
 ## Module Design
 
 **Exports:**
-- Direct function/tool exports using `@tool` decorator
+- Direct function/tool exports using `@tool` decorator from langchain_core
 - Classes exported for instantiation
 
-**No barrel files** - Imports use full paths
+**No barrel files** - No `__init__.py` files, imports use full module paths
 
 ## Environment Configuration
 
@@ -135,14 +136,29 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 ```
 
-**Placement:** At top of files that need environment variables
+**Placement:** At top of files that need environment variables (main.py, test files)
 
 ## Async Patterns
 
 **Async/Await:**
 - Use `async def` for async functions
-- Use `asyncio.get_running_loop().run_until_complete()` for initialization in sync context
-- Class method pattern for async factory: `@classmethod async def initialize(cls, ...)`
+- Class method pattern for async factory:
+  ```python
+  @classmethod
+  async def initialize(cls, headless: bool = False):
+      """Initialize Playwright, browser, and tools."""
+      playwright = await async_playwright().start()
+      ...
+      return cls(playwright, browser, tools)
+  ```
+
+## Logging
+
+**Framework:** No logging framework configured
+
+**Patterns:**
+- Debug/info output via `print(f"...")` statements
+- Test output includes formatted results
 
 ## LangChain/LangGraph Patterns
 
@@ -153,18 +169,21 @@ from langchain_core.tools import tool
 @tool
 def google_search_tool(query: str) -> List[Dict[str, str]]:
     """Search Google for the given query using Serper API."""
-    ...
+    google_serper = GoogleSerperAPIWrapper()
+    result = google_serper.results(query)
+    return result["organic"][:NUM_GOOGLE_RESULTS]
 ```
 
 **Agent Creation:**
 ```python
 from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver
 
-self._agent = create_agent(
+agent = create_agent(
     model=model,
     tools=tools,
     checkpointer=InMemorySaver(),
-    system_prompt=self.system_prompt)
+    system_prompt=system_prompt)
 ```
 
 ---

@@ -6,66 +6,81 @@
 
 ```
 code-monkey/
-├── src/
-│   ├── main.py              # Application entry point
-│   ├── agents/
-│   │   └── web_researcher/
+├── code_monkey/            # Main source package
+│   ├── main.py             # Application entry point
+│   ├── agents/             # Agent implementations
+│   │   └── web_researcher/ # Web researcher agent
 │   │       ├── web_researcher.py  # Agent implementation
 │   │       └── tools.py           # Tool definitions
-│   └── utils/
-│       └── json_utils.py          # Helper utilities
-├── tests/
+│   ├── models/             # LLM model factories
+│   │   └── models.py
+│   └── utils/              # Utility functions
+│       ├── langchain_utils.py
+│       └── json_utils.py
+├── tests/                  # Test suite
 │   ├── conftest.py               # Pytest configuration
 │   ├── test_google_search.py     # Google search tests
-│   ├── test_playwright_tools.py  # Playwright tests
 │   └── test_web_researcher.py    # Web researcher tests
-├── pyproject.toml                # Project configuration
-└── .env                          # Environment variables
+├── pyproject.toml          # Project configuration
+├── .env                    # Environment variables
+└── .planning/              # GSD planning documents
+    └── codebase/
+        ├── ARCHITECTURE.md
+        └── STRUCTURE.md
 ```
 
 ## Directory Purposes
 
-**src/**:
-- Purpose: All application source code
-- Contains: Python modules, packages
-- Key files: `main.py`, `__init__.py` (implied)
+**code_monkey/:**
+- Purpose: Main Python package containing all application code
+- Contains: All source code organized by functional area
+- Key files: `main.py`, `agents/`, `models/`, `utils/`
 
-**src/agents/**:
+**code_monkey/agents/:**
 - Purpose: Specialized agent implementations
 - Contains: Agent classes, agent-specific tools
 - Structure: Per-agent subdirectories
+- Key files: `web_researcher/web_researcher.py`, `web_researcher/tools.py`
 
-**src/agents/web_researcher/**:
-- Purpose: Web research agent implementation
-- Contains: Agent logic, browser tools, search tools
-- Key files: `web_researcher.py`, `tools.py`
+**code_monkey/models/:**
+- Purpose: LLM model configuration and factory functions
+- Contains: Model initialization utilities
+- Key files: `models.py`
 
-**src/utils/**:
+**code_monkey/utils/:**
 - Purpose: Shared utility functions
 - Contains: Helpers used across multiple modules
-- Key files: `json_utils.py`
+- Key files: `langchain_utils.py`, `json_utils.py`
 
-**tests/**:
+**tests/:**
 - Purpose: Test suite
 - Contains: pytest test files
 - Structure: Mirrors source structure loosely
 
+**.planning/:**
+- Purpose: GSD framework planning documents
+- Contains: Architecture and structure analysis
+- Generated: Yes (by /gsd:map-codebase)
+- Committed: Yes
+
 ## Key File Locations
 
 **Entry Points:**
-- `src/main.py`: CLI entry point with main() function
+- `code_monkey/main.py`: CLI entry point with `main()` function
 
 **Configuration:**
-- `pyproject.toml`: Project metadata and dependencies
-- `.env`: Environment variables (not committed)
+- `pyproject.toml`: Project metadata, dependencies, pytest settings
+- `.env`: Environment variables (API keys, not committed)
 
 **Core Logic:**
-- `src/agents/web_researcher/web_researcher.py`: Main agent implementation
-- `src/agents/web_researcher/tools.py`: Tool definitions
+- `code_monkey/agents/web_researcher/web_researcher.py`: Main agent implementation
+- `code_monkey/agents/web_researcher/tools.py`: Tool definitions (Playwright, Google search)
+- `code_monkey/models/models.py`: LLM factory functions
 
 **Testing:**
 - `tests/conftest.py`: Pytest configuration and fixtures
 - `tests/test_web_researcher.py`: Agent integration tests
+- `tests/test_google_search.py`: Google search tool tests
 
 ## Naming Conventions
 
@@ -73,31 +88,40 @@ code-monkey/
 - snake_case.py: All Python files use snake_case
 - Agent files: `<agent_name>.py` (e.g., `web_researcher.py`)
 - Tool files: `tools.py` (for agent-specific tools)
+- Utility files: Descriptive names (e.g., `langchain_utils.py`)
 
 **Directories:**
 - lowercase: All directories use lowercase
 - Agent directories: Singular agent name (e.g., `web_researcher`)
-- Utility directories: Plural or descriptive (e.g., `utils`)
+- Utility directories: Plural (e.g., `utils`, `models`)
 
 **Classes:**
-- PascalCase: All classes use PascalCase (e.g., `WebResearcher`, `PlaywrightTools`)
+- PascalCase: All classes use PascalCase (e.g., `WebResearcher`, `PlaywrightTools`, `SearchResult`)
 
 **Functions:**
-- snake_case: All functions use snake_case (e.g., `google_search_tool`)
+- snake_case: All functions use snake_case (e.g., `get_openai_model()`, `google_search_tool`)
 
 **Variables:**
 - snake_case: Instance variables and local variables use snake_case
-- Private variables: Leading underscore (e.g., `_playwright_tools`)
+- Private variables: Leading underscore (e.g., `_playwright_tools`, `_agent`)
+
+**Constants:**
+- UPPER_SNAKE_CASE: `NUM_GOOGLE_RESULTS`
 
 ## Where to Add New Code
 
 **New Agent:**
-- Agent implementation: `src/agents/<agent_name>/<agent_name>.py`
-- Agent tools: `src/agents/<agent_name>/tools.py`
+- Agent implementation: `code_monkey/agents/<agent_name>/<agent_name>.py`
+- Agent tools: `code_monkey/agents/<agent_name>/tools.py`
 - Tests: `tests/test_<agent_name>.py`
 
 **New Utility:**
-- Implementation: `src/utils/<utility_name>.py`
+- Implementation: `code_monkey/utils/<utility_name>.py`
+- Tests: `tests/test_<utility_name>.py`
+
+**New LLM Provider:**
+- Implementation: `code_monkey/models/models.py` (add factory function)
+- Tests: Add to existing test files or create new test
 
 **New Test:**
 - Test file: `tests/test_<feature>.py`
@@ -105,20 +129,20 @@ code-monkey/
 
 ## Special Directories
 
-**.venv/**:
+**.venv/:**
 - Purpose: Python virtual environment (uv managed)
 - Generated: Yes (by uv)
 - Committed: No (in .gitignore)
 
-**.pytest_cache/**:
+**.pytest_cache/:**
 - Purpose: pytest cache directory
 - Generated: Yes (by pytest)
 - Committed: No
 
-**.git/**:
-- Purpose: Git repository data
-- Generated: Yes (by git)
-- Committed: No
+**.planning/codebase/:**
+- Purpose: GSD codebase analysis documents
+- Generated: Yes (by /gsd:map-codebase)
+- Committed: Yes
 
 ---
 
