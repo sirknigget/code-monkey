@@ -6,143 +6,159 @@
 
 ```
 code-monkey/
-├── code_monkey/            # Main source package
-│   ├── main.py             # Application entry point
-│   ├── agents/             # Agent implementations
-│   │   └── web_researcher/ # Web researcher agent
-│   │       ├── web_researcher.py  # Agent implementation
-│   │       └── tools.py           # Tool definitions
-│   ├── models/             # LLM model factories
-│   │   └── models.py
-│   └── utils/              # Utility functions
-│       ├── langchain_utils.py
-│       └── json_utils.py
-├── tests/                  # Test suite
-│   ├── conftest.py               # Pytest configuration
-│   ├── test_google_search.py     # Google search tests
-│   └── test_web_researcher.py    # Web researcher tests
-├── pyproject.toml          # Project configuration
-├── .env                    # Environment variables
-└── .planning/              # GSD planning documents
-    └── codebase/
-        ├── ARCHITECTURE.md
-        └── STRUCTURE.md
+├── code_monkey/              # Main source code
+│   ├── agents/               # Agent implementations
+│   │   ├── web_researcher/   # Web research agent
+│   │   └── project_librarian/ # Project analysis agent
+│   │       └── utilities/    # File system utilities
+│   ├── models/               # LLM model configuration
+│   ├── utils/                # Shared utilities
+│   └── main.py               # Entry point
+├── tests/                    # Test suite
+│   └── agents/               # Agent tests (mirrors source structure)
+│       ├── web_researcher/
+│       └── project_librarian/
+├── .planning/codebase/       # Architecture documentation
+├── pyproject.toml            # Project configuration
+├── .env                      # Environment variables
+└── uv.lock                   # Dependency lockfile
 ```
 
 ## Directory Purposes
 
-**code_monkey/:**
-- Purpose: Main Python package containing all application code
-- Contains: All source code organized by functional area
-- Key files: `main.py`, `agents/`, `models/`, `utils/`
+**`code_monkey/`:**
+- Purpose: Main source code package
+- Contains: All application code
+- Key files: `main.py` (entry point)
 
-**code_monkey/agents/:**
-- Purpose: Specialized agent implementations
-- Contains: Agent classes, agent-specific tools
-- Structure: Per-agent subdirectories
-- Key files: `web_researcher/web_researcher.py`, `web_researcher/tools.py`
+**`code_monkey/agents/`:**
+- Purpose: Agent implementations
+- Contains: Specialized agents with tools
+- Key files:
+  - `web_researcher/web_researcher.py` (WebResearcher agent)
+  - `web_researcher/tools.py` (Playwright + Google search tools)
 
-**code_monkey/models/:**
-- Purpose: LLM model configuration and factory functions
-- Contains: Model initialization utilities
-- Key files: `models.py`
+**`code_monkey/agents/project_librarian/utilities/`:**
+- Purpose: File system and code analysis utilities
+- Contains:
+  - `file_discovery.py` (Python file discovery)
+  - `hash_utils.py` (SHA-256 hashing)
+  - `code_parser.py` (AST code extraction)
+  - `__init__.py` (barrel exports)
 
-**code_monkey/utils/:**
+**`code_monkey/models/`:**
+- Purpose: LLM model factory functions
+- Contains: `models.py` (get_openai_model, get_minimax_model)
+
+**`code_monkey/utils/`:**
 - Purpose: Shared utility functions
-- Contains: Helpers used across multiple modules
-- Key files: `langchain_utils.py`, `json_utils.py`
+- Contains:
+  - `langchain_utils.py` (LangChain helpers)
+  - `json_utils.py` (JSON serialization)
 
-**tests/:**
+**`tests/`:**
 - Purpose: Test suite
-- Contains: pytest test files
-- Structure: Mirrors source structure loosely
+- Contains: Unit and integration tests
+- Structure: Mirrors agent directory structure
 
-**.planning/:**
-- Purpose: GSD framework planning documents
-- Contains: Architecture and structure analysis
-- Generated: Yes (by /gsd:map-codebase)
-- Committed: Yes
+**`.planning/codebase/`:**
+- Purpose: Architecture and convention documentation
+- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, etc.
 
 ## Key File Locations
 
 **Entry Points:**
-- `code_monkey/main.py`: CLI entry point with `main()` function
+- `/Users/omergilad/workspace/AI/code-monkey/main.py`: Application bootstrap, loads .env
 
 **Configuration:**
-- `pyproject.toml`: Project metadata, dependencies, pytest settings
-- `.env`: Environment variables (API keys, not committed)
+- `/Users/omergilad/workspace/AI/code-monkey/pyproject.toml`: Project metadata, dependencies, pytest config
 
 **Core Logic:**
-- `code_monkey/agents/web_researcher/web_researcher.py`: Main agent implementation
-- `code_monkey/agents/web_researcher/tools.py`: Tool definitions (Playwright, Google search)
-- `code_monkey/models/models.py`: LLM factory functions
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py`: WebResearcher agent
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/`: Project analysis utilities
 
 **Testing:**
-- `tests/conftest.py`: Pytest configuration and fixtures
-- `tests/test_web_researcher.py`: Agent integration tests
-- `tests/test_google_search.py`: Google search tool tests
+- `/Users/omergilad/workspace/AI/code-monkey/tests/agents/project_librarian/`: Project Librarian tests
+- `/Users/omergilad/workspace/AI/code-monkey/tests/agents/web_researcher/`: Web Researcher tests
 
 ## Naming Conventions
 
 **Files:**
-- snake_case.py: All Python files use snake_case
-- Agent files: `<agent_name>.py` (e.g., `web_researcher.py`)
-- Tool files: `tools.py` (for agent-specific tools)
-- Utility files: Descriptive names (e.g., `langchain_utils.py`)
+- snake_case.py: All Python files use lowercase with underscores
+- Example: `file_discovery.py`, `hash_utils.py`, `langchain_utils.py`
 
 **Directories:**
-- lowercase: All directories use lowercase
-- Agent directories: Singular agent name (e.g., `web_researcher`)
-- Utility directories: Plural (e.g., `utils`, `models`)
+- snake_case: All directories use lowercase with underscores
+- Example: `code_monkey`, `web_researcher`, `project_librarian`
 
 **Classes:**
-- PascalCase: All classes use PascalCase (e.g., `WebResearcher`, `PlaywrightTools`, `SearchResult`)
+- PascalCase: All classes use capitalized words
+- Example: `WebResearcher`, `PlaywrightTools`, `SearchResult`, `CodeExtractor`
 
 **Functions:**
-- snake_case: All functions use snake_case (e.g., `get_openai_model()`, `google_search_tool`)
+- snake_case: All functions use lowercase with underscores
+- Example: `discover_python_files`, `compute_file_hash`, `parse_python_code`
 
 **Variables:**
-- snake_case: Instance variables and local variables use snake_case
-- Private variables: Leading underscore (e.g., `_playwright_tools`, `_agent`)
+- snake_case: Local variables and parameters
+- Example: `playwright_tools`, `thread_id`, `root_path`
 
 **Constants:**
-- UPPER_SNAKE_CASE: `NUM_GOOGLE_RESULTS`
+- UPPER_SNAKE_CASE: Module-level constants
+- Example: `EXCLUDED_DIRS`, `NUM_GOOGLE_RESULTS`
+
+**Types:**
+- PascalCase: NamedTuple and Pydantic models
+- Example: `ParsedCode`, `SearchResult`
+
+**Imports:**
+- Absolute imports from package root: `from code_monkey.agents.web_researcher.tools import ...`
 
 ## Where to Add New Code
 
 **New Agent:**
-- Agent implementation: `code_monkey/agents/<agent_name>/<agent_name>.py`
-- Agent tools: `code_monkey/agents/<agent_name>/tools.py`
-- Tests: `tests/test_<agent_name>.py`
+- Primary code: `code_monkey/agents/<agent_name>/`
+- Tests: `tests/agents/<agent_name>/`
+- Initialize module with `__init__.py` if needed
 
-**New Utility:**
+**New Utility for Existing Agent:**
+- Implementation: `code_monkey/agents/<agent>/<utility_name>.py`
+- Export from: `code_monkey/agents/<agent>/__init__.py` (create if needed)
+- Tests: `tests/agents/<agent>/test_<utility_name>.py`
+
+**New Shared Utility:**
 - Implementation: `code_monkey/utils/<utility_name>.py`
-- Tests: `tests/test_<utility_name>.py`
+- Export from: `code_monkey/utils/__init__.py` (create if needed)
 
-**New LLM Provider:**
-- Implementation: `code_monkey/models/models.py` (add factory function)
-- Tests: Add to existing test files or create new test
+**New Model Function:**
+- Implementation: `code_monkey/models/models.py`
+- Add factory function returning appropriate LangChain model
 
 **New Test:**
-- Test file: `tests/test_<feature>.py`
-- Use conftest.py for shared fixtures
+- Unit tests: `tests/agents/<agent>/test_<module>.py`
+- Pattern: Follow existing test file structure (imports, test class/functions)
 
 ## Special Directories
 
-**.venv/:**
-- Purpose: Python virtual environment (uv managed)
-- Generated: Yes (by uv)
-- Committed: No (in .gitignore)
-
-**.pytest_cache/:**
-- Purpose: pytest cache directory
-- Generated: Yes (by pytest)
-- Committed: No
-
-**.planning/codebase/:**
-- Purpose: GSD codebase analysis documents
+**`.planning/codebase/`:**
+- Purpose: Architecture and convention documentation
 - Generated: Yes (by /gsd:map-codebase)
-- Committed: Yes
+- Committed: Yes (version controlled)
+
+**`.pytest_cache/`:**
+- Purpose: Pytest cache directory
+- Generated: Yes
+- Committed: No (.gitignored)
+
+**`.venv/`:**
+- Purpose: Virtual environment
+- Generated: Yes (by uv)
+- Committed: No (.gitignored)
+
+**`.git/`:**
+- Purpose: Git repository data
+- Generated: Yes (by git init)
+- Committed: No
 
 ---
 

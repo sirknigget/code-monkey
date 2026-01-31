@@ -2,189 +2,167 @@
 
 **Analysis Date:** 2026-01-31
 
-## Languages
+## Naming Patterns
 
-**Primary:**
-- Python 3.12+ - All source code
+**Files:**
+- Snake_case: `file_discovery.py`, `hash_utils.py`
+- Descriptive names reflecting functionality
+
+**Functions:**
+- Snake_case: `discover_python_files()`, `compute_file_hash()`, `parse_python_code()`
+- Verb-noun pattern for action functions: `discover_*`, `compute_*`, `parse_*`, `dump_*`
+- Prefix `_` for private/internal methods: `_playwright`, `_browser`, `_tools`
+
+**Variables:**
+- Snake_case: `root`, `pattern`, `exclude_dirs`, `all_files`
+- Underscore suffix to avoid shadowing builtins: `class_` (if needed)
+- Constants: UPPER_SCREAMING_CASE for true constants
+
+**Types:**
+- PascalCase for classes: `ParsedCode`, `CodeExtractor`, `SearchResult`, `PlaywrightTools`
+- NamedTuple for simple data structures: `ParsedCode`
+- BaseModel for Pydantic models: `SearchResult`
 
 ## Code Style
 
 **Formatting:**
-- No explicit formatter configured (Black, Ruff, Prettier not detected)
-- Follow PEP 8 conventions by default
-- Use 4 spaces for indentation
+- No explicit formatter configured (pyproject.toml shows minimal config)
+- Follows PEP 8 conventions (4 spaces indentation, line length ~88 typical)
 
 **Linting:**
-- No explicit linter configured (Ruff, Pylint, flake8 not detected)
+- No explicit linter configured
+- Python 3.12+ required with strict typing
 
-## Naming Patterns
-
-**Files:**
-- Snake_case: `web_researcher.py`, `json_utils.py`, `langchain_utils.py`
-- No `__init__.py` files in directories (no barrel files)
-
-**Classes:**
-- PascalCase: `SearchResult`, `WebResearcher`, `PlaywrightTools`
-- Base model classes inherit from `pydantic.BaseModel`
-
-**Functions:**
-- snake_case: `dump_object`, `google_search_tool`, `teardown`, `last_message_content`
-- Public methods: `search()`, `get_tools()`, `initialize()`
-- Async functions: `async def search()`, `async def teardown()`
-
-**Variables:**
-- snake_case: `thread_id`, `playwright_tools`, `google_serper`
-- Private attributes: Leading underscore `_playwright`, `_browser`, `_tools`, `_agent`
-
-**Constants:**
-- UPPER_SNAKE_CASE: `NUM_GOOGLE_RESULTS`
-
-## Type Hints
-
-**Usage:**
-- Full type annotations preferred
-- Common patterns:
-  ```python
-  from typing import List, Dict, Any
-
-  def search(self, query, thread_id: str = None) -> SearchResult:
-      ...
-  ```
-
-**Pydantic Models:**
-- Use Pydantic `Field` for descriptions:
-  ```python
-  from pydantic import Field, BaseModel
-
-  class SearchResult(BaseModel):
-      result: str = Field(description="The result of the web search")
-      thread_id: str = Field(description="The thread ID for this search session")
-  ```
+**Type Hints:**
+- Used throughout codebase
+- Union types with `|` operator: `Path | str`
+- Generics: `list[Path]`, `Iterator[Path]`, `frozenset[str]`
+- Optional types: `str = None` for nullable parameters
 
 ## Import Organization
 
-**Order:**
-1. Standard library imports (`uuid`, `json`, `typing`)
-2. Third-party imports (`langchain`, `pydantic`, `playwright`)
-3. Local application imports (`from code_monkey.agents.web_researcher.tools import ...`)
+**Standard Library First:**
+```python
+from pathlib import Path
+from typing import Iterator, NamedTuple
+import hashlib
+import ast
+```
+
+**Third-Party Imports:**
+```python
+from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
+from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain_core.tools import tool
+from playwright.async_api import async_playwright
+```
+
+**Local Application Imports:**
+```python
+from code_monkey.agents.project_librarian.utilities.file_discovery import (
+    discover_python_files,
+)
+from code_monkey.utils.langchain_utils import last_message_content
+```
 
 **Path Aliases:**
-- Absolute imports using package root `code_monkey`
-- Example from `web_researcher.py`:
-  ```python
-  from code_monkey.agents.web_researcher.tools import PlaywrightTools, google_search_tool
-  from code_monkey.utils.langchain_utils import last_message_content
-  ```
+- No path aliases configured
+- Use relative imports within modules where appropriate
 
 ## Error Handling
 
-**Patterns:**
-- Exceptions propagated to callers (no try/except wrapping in current code)
-- Pydantic models for validation via BaseModel
-- No custom exception classes defined
-
-## Docstrings
-
-**When to Document:**
-- All public classes: Add class docstring
-- Public methods: Add method docstring with description and params
-- Use """triple double quotes"""
-
-**Example:**
+**Pattern: Try-Except with Cleanup:**
 ```python
-class PlaywrightTools:
-    """Manages Playwright browser tools lifecycle."""
+def compute_file_hash(filepath: Path | str) -> str:
+    try:
+        path = Path(filepath)
+        with open(path, "rb") as f:
+            digest = hashlib.file_digest(f, "sha256")
+        return digest.hexdigest()
+    except OSError:
+        # Re-raise or handle
+        raise
+```
 
-    @classmethod
-    async def initialize(cls, headless: bool = False):
-        """Initialize Playwright, browser, and tools."""
-        ...
+**Exception Propagation:**
+- Errors propagate to caller (OSError from file operations)
+- Syntax errors caught and return empty result: `except SyntaxError: return ParsedCode(...)`
 
-    async def teardown(self):
-        """Gracefully close browser and playwright."""
-        ...
+**Assertions:**
+- Used for invariants in tests: `assert len(result) == 2`
+- Not used for runtime error handling in production code
+
+## Logging
+
+**Framework:** `print()` statements or `None`
+
+**Patterns:**
+- No structured logging framework detected
+- Simple print for output in tools: `print(f"\n=== Google Search Results for '{query}' ===\n")`
+
+## Comments
+
+**When to Comment:**
+- Explain complex logic or non-obvious behavior
+- Document module purpose at top of file
+
+**JSDoc/TSDoc:**
+- Python docstrings following Google style:
+```python
+def discover_python_files(
+    root: Path,
+    pattern: str = "**/*.py",
+    exclude_dirs: frozenset[str] = EXCLUDED_DIRS,
+) -> list[Path]:
+    """Discover Python files matching pattern, excluding specified directories.
+
+    Args:
+        root: The root directory to search from.
+        pattern: Glob pattern to match files (default: "**/*.py").
+        exclude_dirs: Frozenset of directory names to exclude.
+
+    Returns:
+        A sorted list of Path objects for matching Python files.
+    """
+```
+
+**Module-Level Docstrings:**
+```python
+"""File discovery utilities for the Project Librarian agent."""
+"""Hash computation utilities for file change detection."""
 ```
 
 ## Function Design
 
+**Size:** Functions are focused and single-purpose (10-50 lines typical)
+
 **Parameters:**
-- Default values for optional parameters: `headless: bool = True`
-- Type hints for all parameters
+- Default values for optional parameters
+- Type hints required
+- Named parameters for clarity
 
 **Return Values:**
 - Explicit return types in type hints
-- Pydantic models for structured returns: `-> SearchResult`
-- Simple values for utilities
-
-**Class Methods:**
-- Factory pattern via `async classmethod create()`: `WebResearcher.create(model, headless)`
+- Empty collections instead of null where appropriate
+- NamedTuple for structured returns
 
 ## Module Design
 
 **Exports:**
-- Direct function/tool exports using `@tool` decorator from langchain_core
-- Classes exported for instantiation
-
-**No barrel files** - No `__init__.py` files, imports use full module paths
-
-## Environment Configuration
-
-**Pattern:**
+- Explicit `__all__` in utility modules:
 ```python
-from dotenv import load_dotenv
-
-load_dotenv(override=True)
+__all__ = ["discover_python_files", "parse_python_code", "compute_file_hash"]
 ```
 
-**Placement:** At top of files that need environment variables (main.py, test files)
+**Barrel Files:**
+- `utilities/__init__.py` re-exports public functions
+- Single-line imports for public API
 
-## Async Patterns
-
-**Async/Await:**
-- Use `async def` for async functions
-- Class method pattern for async factory:
-  ```python
-  @classmethod
-  async def initialize(cls, headless: bool = False):
-      """Initialize Playwright, browser, and tools."""
-      playwright = await async_playwright().start()
-      ...
-      return cls(playwright, browser, tools)
-  ```
-
-## Logging
-
-**Framework:** No logging framework configured
-
-**Patterns:**
-- Debug/info output via `print(f"...")` statements
-- Test output includes formatted results
-
-## LangChain/LangGraph Patterns
-
-**Tool Definition:**
-```python
-from langchain_core.tools import tool
-
-@tool
-def google_search_tool(query: str) -> List[Dict[str, str]]:
-    """Search Google for the given query using Serper API."""
-    google_serper = GoogleSerperAPIWrapper()
-    result = google_serper.results(query)
-    return result["organic"][:NUM_GOOGLE_RESULTS]
-```
-
-**Agent Creation:**
-```python
-from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver
-
-agent = create_agent(
-    model=model,
-    tools=tools,
-    checkpointer=InMemorySaver(),
-    system_prompt=system_prompt)
-```
+**Class Design:**
+- Minimal classes, prefer functions where possible
+- NamedTuple for simple data containers
+- BaseModel for Pydantic models with validation
+- Class methods for alternative constructors: `PlaywrightTools.initialize()`
 
 ---
 

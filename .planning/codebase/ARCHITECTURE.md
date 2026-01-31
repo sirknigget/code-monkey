@@ -7,122 +7,148 @@
 **Overall:** Multi-Agent LangGraph Orchestration
 
 **Key Characteristics:**
-- Agent-based architecture with specialized, composable agents
-- LangChain/LangGraph framework for LLM orchestration
-- Tool-augmented agents that can interact with external systems (web, APIs)
-- Checkpoint-based state management for conversation continuity
-- Async/await patterns for I/O-bound operations (browser, network)
+- LangGraph-based agent orchestration with stateful graph workflows
+- Specialized agents with distinct responsibilities (Web Researcher, Project Librarian)
+- Async-first design for I/O-bound operations (web requests, file discovery)
+- Modular utility layer supporting agent operations
+- In-memory checkpointer for state persistence within sessions
 
 ## Layers
 
-**Application Layer:**
-- Purpose: Entry point and top-level orchestration
-- Location: `code_monkey/main.py`
-- Contains: `main()` function, environment loading
-- Depends on: Agent layer, utilities
+**Entry Layer:**
+- Purpose: Application entry point and initialization
+- Location: `/Users/omergilad/workspace/AI/code-monkey/main.py`
+- Contains: `main()` function, environment loading via dotenv
+- Depends on: No internal modules (bootstrap only)
 - Used by: CLI invocation
 
-**Agent Layer:**
-- Purpose: Specialized LLM-powered agents with domain-specific capabilities
-- Location: `code_monkey/agents/`
-- Contains: Agent implementations, tool definitions
-- Depends on: LangChain/LangGraph, external service clients
-- Used by: Application layer, tests
-
-**Tool Layer:**
-- Purpose: Reusable capabilities exposed to agents
-- Location: `code_monkey/agents/web_researcher/tools.py`
-- Contains: Playwright browser tools, Google search wrapper
-- Depends on: Playwright, LangChain community toolkits
-- Used by: Agent layer
-
 **Models Layer:**
-- Purpose: LLM model configuration and factory functions
-- Location: `code_monkey/models/models.py`
-- Contains: `get_openai_model()`, `get_minimax_model()` factory functions
-- Depends on: OpenAI, Anthropic/MiniMax SDKs
-- Used by: Agent layer
+- Purpose: LLM model configuration and instantiation
+- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/models/models.py`
+- Contains: Model factory functions (`get_openai_model`, `get_minimax_model`)
+- Depends on: langchain-openai, langchain-anthropic
+- Used by: Agent initialization
+
+**Agents Layer:**
+- Purpose: Specialized autonomous agents with tool access
+- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/`
+- Contains:
+  - `web_researcher/`: WebResearcher agent with Playwright + Google search tools
+  - `project_librarian/`: Project analysis utilities (file discovery, hash computation, code parsing)
+- Depends on: Models layer, Tools layer, Utilities layer
+- Used by: Entry layer (future orchestration)
+
+**Tools Layer:**
+- Purpose: Reusable tool implementations for agents
+- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/tools.py`
+- Contains: PlaywrightTools class, google_search_tool function
+- Depends on: playwright, langchain-community, serper-api
+- Used by: WebResearcher agent
 
 **Utilities Layer:**
-- Purpose: Shared helper functions
-- Location: `code_monkey/utils/`
-- Contains: JSON utilities, LangChain helpers
+- Purpose: Shared helper functions and utilities
+- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/utils/`
+- Contains:
+  - `langchain_utils.py`: LangChain helper functions
+  - `json_utils.py`: JSON serialization utilities
+- Depends on: Standard library only (where possible)
 - Used by: All layers
+
+**Project Librarian Utilities:**
+- Purpose: File system and code analysis operations
+- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/`
+- Contains:
+  - `file_discovery.py`: Python file discovery with exclusions
+  - `hash_utils.py`: SHA-256 file hashing for change detection
+  - `code_parser.py`: AST-based code structure extraction
+- Depends on: pathlib, hashlib, ast
+- Used by: Project Librarian agent, integration tests
 
 ## Data Flow
 
-**Web Research Query Flow:**
+**Web Research Flow:**
 
-1. User invokes `main()` or directly instantiates `WebResearcher`
-2. `WebResearcher.create()` initializes PlaywrightTools asynchronously
-3. `search(query)` is called with optional thread_id
-4. LangChain agent receives query and decides which tool to use
-5. Either `google_search_tool` or Playwright tools are invoked
-6. Results are captured and returned as `SearchResult`
-7. `teardown()` closes browser resources
+1. User invokes application with query
+2. Entry layer initializes models via models.py
+3. WebResearcher agent is created with PlaywrightTools
+4. Query is passed to agent with thread_id for session tracking
+5. Agent uses tools (Google search, Playwright browsing) to gather information
+6. Response is extracted from agent state via last_message_content()
+7. Result returned with thread_id for potential continuation
+
+**Project Analysis Flow:**
+
+1. Project Librarian receives project root path
+2. File discovery scans for Python files (excluding venv, node_modules, .git)
+3. For each file:
+   - Hash computed for change detection
+   - Code parsed via AST to extract classes, functions, imports
+4. Aggregated results returned as structured data
 
 **State Management:**
-- `InMemorySaver` checkpointer maintains conversation state per thread_id
-- Thread-based isolation using `RunnableConfig(configurable={"thread_id": ...})`
-- State dict with "messages" key holds conversation history
+- LangGraph InMemorySaver checkpointer for agent state persistence
+- Thread-based session isolation via configurable thread_id
+- No persistent storage between sessions (in-memory only)
 
 ## Key Abstractions
 
-**WebResearcher Agent:**
-- Purpose: Specialized agent for web research tasks
-- Examples: `code_monkey/agents/web_researcher/web_researcher.py`
-- Pattern: LangChain agent factory with custom tools and checkpointer
+**Agent Abstraction:**
+- Purpose: Encapsulates LLM agent with tools and state
+- Examples:
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py` (WebResearcher class)
+- Pattern: Factory method (create) + async instance methods (search, teardown)
 
-**PlaywrightTools:**
-- Purpose: Manages async Playwright browser lifecycle
-- Examples: `code_monkey/agents/web_researcher/tools.py`
-- Pattern: Async class methods (initialize, get_tools, teardown)
+**Tool Abstraction:**
+- Purpose: Provides reusable capabilities to agents
+- Examples:
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/tools.py` (PlaywrightTools, google_search_tool)
+- Pattern: Class-based lifecycle management + decorated functions
 
-**SearchResult:**
-- Purpose: Typed response object for search operations
-- Examples: `code_monkey/agents/web_researcher/web_researcher.py` (line 14-16)
-- Pattern: Pydantic BaseModel for validation
+**Utility Abstraction:**
+- Purpose: Stateless helper functions for common operations
+- Examples:
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/file_discovery.py`
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/hash_utils.py`
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/code_parser.py`
+- Pattern: Pure functions with typed signatures, NamedTuple for result structures
 
-**LLM Factory Functions:**
-- Purpose: Centralized model configuration
-- Examples: `code_monkey/models/models.py`
-- Pattern: Factory functions returning configured model instances
+**Data Model Abstraction:**
+- Purpose: Structured response types with validation
+- Examples:
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py` (SearchResult)
+  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/code_parser.py` (ParsedCode)
+- Pattern: Pydantic BaseModel and typing.NamedTuple
 
 ## Entry Points
 
-**Primary Entry Point:**
-- Location: `code_monkey/main.py`
-- Triggers: `python -m code_monkey.main` or `uv run python code_monkey/main.py`
-- Responsibilities: Load environment variables, invoke main logic
+**main():**
+- Location: `/Users/omergilad/workspace/AI/code-monkey/main.py`
+- Triggers: `python main.py` or `uv run python main.py`
+- Responsibilities: Environment loading, application bootstrap (currently stub)
 
-**Test Entry Point:**
-- Location: `tests/`
+**Test Suite:**
+- Location: `/Users/omergilad/workspace/AI/code-monkey/tests/`
 - Triggers: `pytest` or `uv run pytest`
-- Responsibilities: Run test suite
-
-**Agent Direct Usage:**
-- Location: `code_monkey/agents/web_researcher/web_researcher.py`
-- Triggers: Direct instantiation with LLM model
-- Responsibilities: Execute web research tasks
+- Responsibilities: Unit and integration tests for agents and utilities
 
 ## Error Handling
 
-**Strategy:** Propagate exceptions through LangChain agent execution
+**Strategy:** Try-except with graceful degradation
 
 **Patterns:**
-- Async initialization errors bubble up from `PlaywrightTools.initialize()`
-- Tool execution errors are caught and returned by LangChain agent framework
-- Teardown errors in `teardown()` are not explicitly caught
+- Syntax errors in code parsing return empty ParsedCode (no exception propagation)
+- File read errors propagate as OSError
+- Agent errors via LangChain exception handling
 
 ## Cross-Cutting Concerns
 
-**Logging:** Standard print statements, no structured logging framework
+**Logging:** Print statements only (no structured logging framework)
 
-**Validation:** Pydantic BaseModel for typed responses (SearchResult)
+**Validation:** Pydantic BaseModel for response types, typed signatures throughout
 
-**Authentication:** Environment variables via dotenv (loaded in main.py and tests)
+**Authentication:** Environment variables via dotenv for API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, SERPER_API_KEY)
 
-**Async Management:** `async_playwright` lifecycle in PlaywrightTools
+**Async Operations:** Async/await pattern for I/O-bound work (Playwright, file operations)
 
 ---
 
