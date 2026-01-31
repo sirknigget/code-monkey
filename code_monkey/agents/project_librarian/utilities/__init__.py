@@ -10,5 +10,8 @@ from code_monkey.agents.project_librarian.utilities.code_parser import (
 from code_monkey.agents.project_librarian.utilities.file_discovery import (
     discover_python_files,
 )
+from code_monkey.agents.project_librarian.utilities.hash_utils import (
+    compute_file_hash,
+)
 
-__all__ = ["discover_python_files", "parse_python_code"]
+__all__ = ["discover_python_files", "parse_python_code", "compute_file_hash"]
