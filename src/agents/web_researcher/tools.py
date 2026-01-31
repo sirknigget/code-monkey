@@ -9,7 +9,7 @@ NUM_GOOGLE_RESULTS = 10
 
 
 @tool
-def google_search(query: str) -> List[Dict[str, str]]:
+def google_search_tool(query: str) -> List[Dict[str, str]]:
     """Search Google for the given query using Serper API."""
 
     google_serper = GoogleSerperAPIWrapper()
