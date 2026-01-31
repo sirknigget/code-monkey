@@ -18,9 +18,9 @@ class ParsedCode(NamedTuple):
         imports: List of import statements found in the source.
     """
 
-    classes: list[str]
-    functions: list[str]
-    imports: list[str]
+    classes: list[str] = []
+    functions: list[str] = []
+    imports: list[str] = []
 
 
 class CodeExtractor(ast.NodeVisitor):
@@ -70,7 +70,8 @@ class CodeExtractor(ast.NodeVisitor):
             node: The Import AST node.
         """
         for alias in node.names:
-            self.imports.append(alias.name)
+            name = alias.asname if alias.asname else alias.name
+            self.imports.append(name)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         """Visit a from-import statement node.
