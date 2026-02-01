@@ -53,7 +53,7 @@ None - all tasks completed successfully
 |---|-------------|------|--------|-----------|
 | 001 | Tree structure for code parser | 2026-02-01 | cc1b436 | [001-tree-structure-code-parser](./quick/001-tree-structure-code-parser/) |
 | 002 | Add llm_friendly_string function to ParsedCode | 2026-02-01 | 866effc | [002-add-llm-friendly-string-function-to-parsed](./quick/002-add-llm-friendly-string-function-to-parsed/) |
-| 003 | Add include_imports parameter to llm_friendly_string | 2026-02-01 | | [003-add-include-imports-param-to-llm-friendly](./quick/003-add-include-imports-param-to-llm-friendly/) |
+| 003 | Add include_imports parameter to llm_friendly_string | 2026-02-01 | 34dce3c | [003-add-include-imports-param-to-llm-friendly](./quick/003-add-include-imports-param-to-llm-friendly/) |
 
 ## Session Continuity
 
