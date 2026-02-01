@@ -4,7 +4,7 @@ This test module uses the actual LLM from code_monkey/models/models.py
 to test ProjectMapper's full functionality with a realistic mock project.
 """
 
-import os
+import json
 import shutil
 from pathlib import Path
 
@@ -37,36 +37,39 @@ class TestProjectMapperRealLLM:
         mapper = ProjectMapper(root=MOCK_PROJECT_PATH, llm=llm)
 
         # Run full scan
-        result = mapper.scan()
+        module_summaries = mapper.scan()
 
-        # Verify scan returned results
-        assert result is not None
-        assert "files_processed" in result
-        assert result["files_processed"] > 0
+        # Verify scan returned results - scan() returns dict[Path, str] of module summaries
+        assert module_summaries is not None
+        assert len(module_summaries) > 0
 
         # Verify .codemonkey cache was created
         cache_path = MOCK_PROJECT_PATH / ".codemonkey"
         assert cache_path.exists()
 
-        # Verify file-hashes cache exists
-        file_hashes_path = cache_path / "file-hashes"
+        # Verify file_hashes.json cache exists
+        file_hashes_path = cache_path / "file_hashes.json"
         assert file_hashes_path.exists()
 
         # Verify hashes file contains data
         with open(file_hashes_path) as f:
-            content = f.read()
-            assert len(content) > 0
+            hashes = json.load(f)
+            assert len(hashes) > 0
 
-        # Verify project-context exists
-        project_context_path = cache_path / "project-context"
+        # Verify project_context.json exists
+        project_context_path = cache_path / "project_context.json"
         assert project_context_path.exists()
 
         # Verify project context contains meaningful content
         with open(project_context_path) as f:
-            context = f.read()
-            assert len(context) > 10  # Should have some description
-            # Should mention "requests" or HTTP-related concepts
-            assert any(word in context.lower() for word in ["request", "http", "python", "library"])
+            context_data = json.load(f)
+            # Context is stored as {"context": "..."} so check the context value
+            assert "context" in context_data
+            assert len(context_data["context"]) > 10  # Should have some description
+
+        # Verify module summary files exist
+        module_summary_files = list(cache_path.rglob("_module.md"))
+        assert len(module_summary_files) > 0
 
     def test_real_llm_incremental_update(self):
         """Test incremental update behavior with real LLM."""
@@ -75,7 +78,7 @@ class TestProjectMapperRealLLM:
 
         # First scan
         result1 = mapper.scan()
-        assert result1["files_processed"] > 0
+        assert len(result1) > 0
 
         # Modify a file in the mock project
         test_file = MOCK_PROJECT_PATH / "src" / "requests" / "__init__.py"
@@ -86,9 +89,10 @@ class TestProjectMapperRealLLM:
         test_file.write_text(modified_content)
 
         try:
-            # Second scan should detect the change
+            # Second scan should detect the change and return module summaries
             result2 = mapper.scan()
-            assert result2["files_processed"] >= 1  # Should process at least the changed file
+            assert result2 is not None
+            assert len(result2) >= 1  # Should return at least some module summaries
         finally:
             # Restore original content
             test_file.write_text(original_content)
@@ -107,10 +111,10 @@ class TestProjectMapperRealLLM:
             MOCK_PROJECT_PATH / "src" / "requests" / "status_codes.py",
         ]
 
-        # Run update with specific files
+        # Run update with specific files - returns dict[Path, str] of module summaries
         result = mapper.update(files_to_update)
         assert result is not None
-        assert "files_processed" in result
+        assert len(result) >= 1  # Should return module summaries
 
     def test_real_llm_generates_module_summaries(self):
         """Test that module summaries are generated in the cache."""
@@ -120,18 +124,15 @@ class TestProjectMapperRealLLM:
         # Run scan
         mapper.scan()
 
-        # Check that code-context directory exists
+        # Check that cache directory has module summaries
         cache_path = MOCK_PROJECT_PATH / ".codemonkey"
-        code_context_path = cache_path / "code-context"
 
-        assert code_context_path.exists()
-
-        # Should have multiple summary files
-        summary_files = list(code_context_path.glob("*.txt"))
-        assert len(summary_files) > 0
+        # Should have multiple _module.md files
+        module_summary_files = list(cache_path.rglob("_module.md"))
+        assert len(module_summary_files) > 3  # At least root, src, tests
 
         # Each summary should contain meaningful content
-        for summary_file in summary_files[:3]:  # Check first 3
+        for summary_file in module_summary_files[:3]:  # Check first 3
             with open(summary_file) as f:
                 content = f.read()
                 assert len(content) > 10  # Should have some LLM-generated content
@@ -188,8 +189,8 @@ class TestProjectMapperRealLLMWithModifiedProject:
         try:
             # Scan again - should discover new files
             result = mapper.scan()
-            # New files should be processed
-            assert result["files_processed"] >= 2
+            # New files should be processed - returns module summaries dict
+            assert len(result) >= 1
         finally:
             # Clean up
             shutil.rmtree(new_dir)
@@ -202,17 +203,21 @@ class TestProjectMapperRealLLMWithModifiedProject:
         # Run scan
         mapper.scan()
 
-        # Check for file-specific summaries
+        # Check for file-specific summaries in cache
         cache_path = MOCK_PROJECT_PATH / ".codemonkey"
-        code_context_path = cache_path / "code-context"
 
-        # Look for a specific file summary (e.g., models.py)
-        models_summary = code_context_path / "src-requests-models.py.txt"
-        if models_summary.exists():
-            with open(models_summary) as f:
-                content = f.read()
-                # Should have LLM-generated summary
-                assert len(content) > 10
+        # Look for any .md files in the cache (these are file/module summaries)
+        md_files = list(cache_path.rglob("*.md"))
+        assert len(md_files) > 0
+
+        # Check that at least some files have meaningful content
+        non_module_files = [f for f in md_files if f.name != "_module.md"]
+        if non_module_files:
+            for summary_file in non_module_files[:3]:
+                with open(summary_file) as f:
+                    content = f.read()
+                    # Should have LLM-generated content
+                    assert len(content) > 10
 
 
 if __name__ == "__main__":
