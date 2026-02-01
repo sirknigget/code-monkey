@@ -8,60 +8,133 @@ import ast
 from typing import NamedTuple
 
 
+class CodeNode(NamedTuple):
+    """Represents a node in the code structure tree.
+
+    Attributes:
+        name: The name of the class or function.
+        type: The type of node - "class" or "function".
+        children: List of child nodes (methods for classes, empty for functions).
+                  Inner classes are children of their parent class.
+    """
+
+    name: str
+    type: str
+    children: list["CodeNode"] = []
+
+
 class ParsedCode(NamedTuple):
     """Represents extracted structure from Python source code.
 
     Attributes:
-        classes: List of class names found in the source.
-        functions: List of function names found in the source.
-                  Async functions are prefixed with "async ".
+        classes: List of CodeNode objects for top-level classes.
+                 Each class node may have method nodes as children.
+        functions: List of CodeNode objects for top-level functions.
         imports: List of import statements found in the source.
     """
 
-    classes: list[str] = []
-    functions: list[str] = []
+    classes: list[CodeNode] = []
+    functions: list[CodeNode] = []
     imports: list[str] = []
 
 
 class CodeExtractor(ast.NodeVisitor):
     """AST visitor that extracts code structure from Python source.
 
-    Extracts class names, function names (sync and async), and
-    import statements from the AST.
+    Builds a tree structure with 2 depth levels:
+    - Top level: classes and functions
+    - Second level: methods and inner classes (children of classes)
+
+    Does not nest deeper than 2 levels.
     """
 
     def __init__(self) -> None:
         """Initialize empty lists for extracted elements."""
-        self.classes: list[str] = []
-        self.functions: list[str] = []
+        self.classes: list[CodeNode] = []
+        self.functions: list[CodeNode] = []
         self.imports: list[str] = []
+        self._in_class_body: bool = False
+
+    def _process_class_body(self, node: ast.ClassDef, class_node: CodeNode) -> None:
+        """Process a class body for methods and inner classes.
+
+        Handles 2-level nesting: class methods and inner classes become children.
+        Inner class methods are also extracted (but not deeper nesting).
+
+        Args:
+            node: The ClassDef AST node.
+            class_node: The CodeNode to populate with children.
+        """
+        # Set flag to indicate we're inside a class body
+        previous_state = self._in_class_body
+        self._in_class_body = True
+
+        for child in node.body:
+            if isinstance(child, ast.FunctionDef):
+                func_node = CodeNode(
+                    name=child.name, type="function", children=[]
+                )
+                class_node.children.append(func_node)
+            elif isinstance(child, ast.AsyncFunctionDef):
+                func_node = CodeNode(
+                    name=f"async {child.name}", type="function", children=[]
+                )
+                class_node.children.append(func_node)
+            elif isinstance(child, ast.ClassDef):
+                # Create inner class node
+                inner_node = CodeNode(
+                    name=child.name, type="class", children=[]
+                )
+                # Process inner class body for its methods
+                self._process_class_body(child, inner_node)
+                class_node.children.append(inner_node)
+            # Skip other node types (pass, docstring, assignments, etc.)
+
+        # Restore previous state
+        self._in_class_body = previous_state
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         """Visit a class definition node.
 
+        Creates a class node and processes its body for methods and
+        inner classes. Inner class methods are also extracted.
+
         Args:
             node: The ClassDef AST node.
         """
-        self.classes.append(node.name)
-        self.generic_visit(node)
+        class_node = CodeNode(name=node.name, type="class", children=[])
+
+        # Process class body for methods and inner classes
+        self._process_class_body(node, class_node)
+
+        # Add class to top-level list (classes are always top-level in our tree)
+        self.classes.append(class_node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Visit a function definition node.
 
+        Only adds to self.functions if not inside a class body.
+
         Args:
             node: The FunctionDef AST node.
         """
-        self.functions.append(node.name)
-        self.generic_visit(node)
+        if not self._in_class_body:
+            func_node = CodeNode(name=node.name, type="function", children=[])
+            self.functions.append(func_node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         """Visit an async function definition node.
 
+        Only adds to self.functions if not inside a class body.
+
         Args:
             node: The AsyncFunctionDef AST node.
         """
-        self.functions.append(f"async {node.name}")
-        self.generic_visit(node)
+        if not self._in_class_body:
+            func_node = CodeNode(
+                name=f"async {node.name}", type="function", children=[]
+            )
+            self.functions.append(func_node)
 
     def visit_Import(self, node: ast.Import) -> None:
         """Visit an import statement node.
@@ -97,8 +170,10 @@ def parse_python_code(source: str) -> ParsedCode:
         source: The Python source code to parse.
 
     Returns:
-        A ParsedCode NamedTuple containing lists of classes,
-        functions, and imports found in the source.
+        A ParsedCode NamedTuple containing:
+        - classes: List of CodeNode objects for top-level classes
+        - functions: List of CodeNode objects for top-level functions
+        - imports: List of import statements found in the source
         Returns an empty ParsedCode if the source contains
         syntax errors.
     """

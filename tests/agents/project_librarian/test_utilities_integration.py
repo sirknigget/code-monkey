@@ -69,7 +69,12 @@ class TestFullWorkflow:
                 source = f.read_text()
                 parsed = parse_python_code(source)
                 assert len(parsed.classes) >= 1
-                assert len(parsed.functions) >= 1
+
+                # Check tree structure
+                for cls in parsed.classes:
+                    assert cls.type == "class"
+                    for method in cls.children:
+                        assert method.type == "function"
 
     def test_hash_changes_after_modification(self):
         """Verify hash changes when file content changes."""
@@ -130,10 +135,30 @@ class TestDirectoryAnalysis:
             source = files[0].read_text()
             parsed = parse_python_code(source)
 
-            assert "BaseClass" in parsed.classes
-            assert "DerivedClass" in parsed.classes
-            assert "standalone_function" in parsed.functions
-            assert "async async_function" in parsed.functions
+            # Check tree structure
+            assert len(parsed.classes) == 2
+
+            base_class = parsed.classes[0]
+            assert base_class.name == "BaseClass"
+            assert base_class.type == "class"
+            assert len(base_class.children) == 0
+
+            derived_class = parsed.classes[1]
+            assert derived_class.name == "DerivedClass"
+            assert derived_class.type == "class"
+            assert len(derived_class.children) == 2
+
+            method_names = [c.name for c in derived_class.children]
+            assert "method_one" in method_names
+            assert "async method_two" in method_names
+
+            # Check top-level functions
+            assert len(parsed.functions) == 2
+            func_names = [f.name for f in parsed.functions]
+            assert "standalone_function" in func_names
+            assert "async async_function" in func_names
+
+            # Check imports
             assert "os" in parsed.imports
             assert "sys" in parsed.imports
             assert "typing.Dict" in parsed.imports
@@ -213,7 +238,9 @@ class TestRejectsNonPythonFiles:
             (tmppath / ".venv").mkdir()
             (tmppath / ".venv" / "lib").mkdir()
             (tmppath / ".venv" / "lib" / "site-packages").mkdir()
-            (tmppath / ".venv" / "lib" / "site-packages" / "package.py").write_text("x = 1")
+            (tmppath / ".venv" / "lib" / "site-packages" / "package.py").write_text(
+                "x = 1"
+            )
 
             (tmppath / "node_modules").mkdir()
             (tmppath / "node_modules" / "package").mkdir()
@@ -254,3 +281,122 @@ class TestImportFromUtilitiesModule:
         assert callable(discover_python_files)
         assert callable(parse_python_code)
         assert callable(compute_file_hash)
+
+
+class TestTreeStructureIntegration:
+    """Integration tests specifically for tree structure functionality."""
+
+    def test_complex_inheritance_hierarchy(self):
+        """Test parsing of nested class inheritance structures."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+
+            test_file = tmppath / "inheritance.py"
+            test_file.write_text(
+                textwrap.dedent(
+                    """
+                    class Animal:
+                        def breathe(self):
+                            pass
+
+                    class Dog(Animal):
+                        def bark(self):
+                            pass
+
+                        class ServiceDog(Dog):
+                            def assist(self):
+                                pass
+
+                            def bark_loudly(self):
+                                pass
+                    """
+                )
+            )
+
+            files = discover_python_files(tmppath)
+            assert len(files) == 1
+
+            source = files[0].read_text()
+            parsed = parse_python_code(source)
+
+            # Animal and Dog are top-level classes (inheritance doesn't create nesting)
+            # ServiceDog is an inner class of Dog
+            assert len(parsed.classes) == 2  # Animal and Dog
+
+            # Find Animal and Dog by name
+            animal = next((c for c in parsed.classes if c.name == "Animal"), None)
+            dog = next((c for c in parsed.classes if c.name == "Dog"), None)
+
+            assert animal is not None
+            assert animal.name == "Animal"
+            assert len(animal.children) == 1
+            assert animal.children[0].name == "breathe"
+
+            assert dog is not None
+            assert dog.name == "Dog"
+
+            # Dog has bark method and ServiceDog as inner class
+            assert len(dog.children) == 2  # bark method and ServiceDog class
+            child_types = [c.type for c in dog.children]
+            assert "function" in child_types
+            assert "class" in child_types
+
+            # Find ServiceDog child
+            service_dog = [c for c in dog.children if c.type == "class"][0]
+            assert service_dog.name == "ServiceDog"
+            assert len(service_dog.children) == 2  # assist and bark_loudly methods
+
+    def test_mixed_top_level_and_nested(self):
+        """Test file with both top-level and nested definitions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+
+            test_file = tmppath / "mixed.py"
+            test_file.write_text(
+                textwrap.dedent(
+                    """
+                    # Top-level function
+                    def top_function():
+                        pass
+
+                    # Top-level class
+                    class TopClass:
+                        def top_method(self):
+                            pass
+
+                        class NestedClass:
+                            def nested_method(self):
+                                pass
+
+                    # Another top-level function
+                    async def another_async():
+                        pass
+                    """
+                )
+            )
+
+            files = discover_python_files(tmppath)
+            parsed = parse_python_code(files[0].read_text())
+
+            # Top-level functions
+            assert len(parsed.functions) == 2
+            func_names = [f.name for f in parsed.functions]
+            assert "top_function" in func_names
+            assert "async another_async" in func_names
+
+            # Top-level classes
+            assert len(parsed.classes) == 1  # Only TopClass
+            top_class = parsed.classes[0]
+            assert top_class.name == "TopClass"
+
+            # TopClass has method and nested class
+            assert len(top_class.children) == 2
+            child_names = [c.name for c in top_class.children]
+            assert "top_method" in child_names
+            assert "NestedClass" in child_names
+
+            # NestedClass has its own method
+            nested_class = top_class.children[1]
+            assert nested_class.type == "class"
+            assert len(nested_class.children) == 1
+            assert nested_class.children[0].name == "nested_method"
