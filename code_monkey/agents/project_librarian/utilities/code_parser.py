@@ -37,6 +37,52 @@ class ParsedCode(NamedTuple):
     functions: list[CodeNode] = []
     imports: list[str] = []
 
+    def llm_friendly_string(self) -> str:
+        """Return a formatted string representation suitable for LLM consumption.
+
+        Returns:
+            A formatted string showing classes, functions, and imports
+            in a tree-like structure with proper indentation.
+        """
+        lines = []
+
+        if self.classes:
+            lines.append("=== Classes ===")
+            for cls in self.classes:
+                lines.append(self._format_node(cls, 0))
+            lines.append("")
+
+        if self.functions:
+            lines.append("=== Functions ===")
+            for func in self.functions:
+                lines.append(f"- {func.name}")
+            lines.append("")
+
+        if self.imports:
+            lines.append("=== Imports ===")
+            for imp in self.imports:
+                lines.append(f"- {imp}")
+
+        return "\n".join(lines)
+
+    def _format_node(self, node: CodeNode, indent: int) -> str:
+        """Format a CodeNode with proper indentation for tree display.
+
+        Args:
+            node: The CodeNode to format.
+            indent: Current indentation level (0 = no indent).
+
+        Returns:
+            A formatted string representation of the node and its children.
+        """
+        prefix = "  " * indent
+        lines = [f"{prefix}- {node.name}"]
+
+        for child in node.children:
+            lines.append(self._format_node(child, indent + 1))
+
+        return "\n".join(lines)
+
 
 class CodeExtractor(ast.NodeVisitor):
     """AST visitor that extracts code structure from Python source.

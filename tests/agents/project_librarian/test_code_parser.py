@@ -326,3 +326,113 @@ class TestCodeNodeStructure:
         """CodeNode should default to empty children list."""
         node = CodeNode(name="func", type="function")
         assert node.children == []
+
+
+class TestLlmFriendlyString:
+    """Tests for llm_friendly_string method."""
+
+    def test_empty_parsed_code(self) -> None:
+        """Empty ParsedCode should return empty string."""
+        result = ParsedCode()
+        assert result.llm_friendly_string() == ""
+
+    def test_classes_with_methods(self) -> None:
+        """Should format classes with methods correctly."""
+        code = ParsedCode(
+            classes=[
+                CodeNode(
+                    name="MyClass",
+                    type="class",
+                    children=[
+                        CodeNode(name="method1", type="function"),
+                        CodeNode(name="async method2", type="function"),
+                    ],
+                )
+            ]
+        )
+        result = code.llm_friendly_string()
+        assert "=== Classes ===" in result
+        assert "- MyClass" in result
+        assert "  - method1" in result
+        assert "  - async method2" in result
+
+    def test_functions_only(self) -> None:
+        """Should format functions correctly."""
+        code = ParsedCode(
+            functions=[
+                CodeNode(name="func1", type="function"),
+                CodeNode(name="async func2", type="function"),
+            ]
+        )
+        result = code.llm_friendly_string()
+        assert "=== Functions ===" in result
+        assert "- func1" in result
+        assert "- async func2" in result
+
+    def test_imports_only(self) -> None:
+        """Should format imports correctly."""
+        code = ParsedCode(imports=["os", "sys", "pathlib.Path"])
+        result = code.llm_friendly_string()
+        assert "=== Imports ===" in result
+        assert "- os" in result
+        assert "- sys" in result
+        assert "- pathlib.Path" in result
+
+    def test_full_structure(self) -> None:
+        """Should format all sections when present."""
+        code = ParsedCode(
+            classes=[
+                CodeNode(
+                    name="Outer",
+                    type="class",
+                    children=[
+                        CodeNode(
+                            name="Inner",
+                            type="class",
+                            children=[
+                                CodeNode(name="inner_method", type="function"),
+                            ],
+                        ),
+                        CodeNode(name="outer_method", type="function"),
+                    ],
+                )
+            ],
+            functions=[CodeNode(name="top_level", type="function")],
+            imports=["os", "typing.List"],
+        )
+        result = code.llm_friendly_string()
+
+        assert "=== Classes ===" in result
+        assert "=== Functions ===" in result
+        assert "=== Imports ===" in result
+
+        # Check class hierarchy
+        assert "- Outer" in result
+        assert "  - Inner" in result
+        assert "    - inner_method" in result
+        assert "  - outer_method" in result
+
+    def test_inner_class_structure(self) -> None:
+        """Should correctly show inner class nesting."""
+        code = ParsedCode(
+            classes=[
+                CodeNode(
+                    name="Container",
+                    type="class",
+                    children=[
+                        CodeNode(
+                            name="Nested",
+                            type="class",
+                            children=[CodeNode(name="nested_method", type="function")],
+                        )
+                    ],
+                )
+            ]
+        )
+        result = code.llm_friendly_string()
+        lines = result.split("\n")
+        container_idx = next(i for i, line in enumerate(lines) if "- Container" in line)
+        nested_idx = next(i for i, line in enumerate(lines) if "- Nested" in line)
+        method_idx = next(i for i, line in enumerate(lines) if "nested_method" in line)
+
+        assert container_idx < nested_idx < method_idx
