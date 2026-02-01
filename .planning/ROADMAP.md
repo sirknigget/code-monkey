@@ -24,6 +24,27 @@ Building core utilities for the Project Librarian agent using Python standard li
 - Code parsing with ast.NodeVisitor to extract classes, functions, imports
 - SHA-256 hashing with hashlib.file_digest() for change detection
 
+### Phase 02: Project Mapper class
+
+**Goal:** Build ProjectMapper class for project context file generation
+**Depends on:** Phase 01
+**Plans:** 1 plan in 1 wave
+
+Plans:
+- [x] 02-PLAN.md — ProjectMapper class with run() method, hash-based change detection, LLM summarization, and cache infrastructure
+
+**Details:**
+ProjectMapper class with 4 internal composed classes:
+- CacheManager: atomic cache writes to .codemonkey/
+- Summarizer: 3 LLM templates with 10-line limit, 3x retry with backoff
+- DirectoryProcessor: top-down traversal, parallel file processing
+- ProjectMapper: public scan()/update() API, hash-based change detection
+
+Cache structure:
+- .codemonkey/file_hashes.json - hash cache
+- .codemonkey/code_context/{path}.md - per-file summaries
+- .codemonkey/project_context.json - project context
+
 ---
 
 ## Future Milestones
