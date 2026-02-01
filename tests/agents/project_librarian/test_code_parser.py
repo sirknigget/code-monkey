@@ -436,3 +436,43 @@ class TestLlmFriendlyString:
         method_idx = next(i for i, line in enumerate(lines) if "nested_method" in line)
 
         assert container_idx < nested_idx < method_idx
+
+    def test_excludes_imports_when_false(self) -> None:
+        """Should exclude imports section when include_imports=False."""
+        code = ParsedCode(
+            classes=[CodeNode(name="MyClass", type="class")],
+            functions=[CodeNode(name="func1", type="function")],
+            imports=["os", "sys"],
+        )
+        result = code.llm_friendly_string(include_imports=False)
+
+        assert "=== Classes ===" in result
+        assert "=== Functions ===" in result
+        assert "=== Imports ===" not in result
+        assert "- os" not in result
+        assert "- sys" not in result
+        assert "- MyClass" in result
+        assert "- func1" in result
+
+    def test_includes_imports_by_default(self) -> None:
+        """Imports should be included by default (backward compatibility)."""
+        code = ParsedCode(
+            classes=[CodeNode(name="MyClass", type="class")],
+            imports=["os"],
+        )
+        result = code.llm_friendly_string()
+
+        assert "=== Imports ===" in result
+        assert "- os" in result
+
+    def test_explicit_include_imports_true(self) -> None:
+        """Should include imports when explicitly set to True."""
+        code = ParsedCode(
+            functions=[CodeNode(name="func", type="function")],
+            imports=["typing"],
+        )
+        result = code.llm_friendly_string(include_imports=True)
+
+        assert "=== Functions ===" in result
+        assert "=== Imports ===" in result
+        assert "- typing" in result

@@ -37,8 +37,12 @@ class ParsedCode(NamedTuple):
     functions: list[CodeNode] = []
     imports: list[str] = []
 
-    def llm_friendly_string(self) -> str:
+    def llm_friendly_string(self, include_imports: bool = True) -> str:
         """Return a formatted string representation suitable for LLM consumption.
+
+        Args:
+            include_imports: Whether to include the imports section in the output.
+                Defaults to True.
 
         Returns:
             A formatted string showing classes, functions, and imports
@@ -58,7 +62,7 @@ class ParsedCode(NamedTuple):
                 lines.append(f"- {func.name}")
             lines.append("")
 
-        if self.imports:
+        if include_imports and self.imports:
             lines.append("=== Imports ===")
             for imp in self.imports:
                 lines.append(f"- {imp}")
