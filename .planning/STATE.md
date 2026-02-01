@@ -52,7 +52,7 @@ None - all tasks completed successfully
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 001 | Tree structure for code parser | 2026-02-01 | cc1b436 | [001-tree-structure-code-parser](./quick/001-tree-structure-code-parser/) |
-| 002 | Add llm_friendly_string function to ParsedCode | 2026-02-01 | | [002-add-llm-friendly-string-function-to-parsed](./quick/002-add-llm-friendly-string-function-to-parsed/) |
+| 002 | Add llm_friendly_string function to ParsedCode | 2026-02-01 | 866effc | [002-add-llm-friendly-string-function-to-parsed](./quick/002-add-llm-friendly-string-function-to-parsed/) |
 
 ## Session Continuity
 
