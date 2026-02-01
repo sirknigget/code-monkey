@@ -1,12 +1,15 @@
-"""Project Librarian agent utilities and ProjectMapper.
+"""Project Librarian agent utilities and ProjectMapper."""
 
-Provides file discovery, code parsing, hash utilities, and project mapping
-for analyzing project structure and code.
-"""
-
-from code_monkey.agents.project_librarian.project_mapper import (
-    ProjectMapper,
+from code_monkey.agents.project_librarian.cache_manager import CacheManager
+from code_monkey.agents.project_librarian.directory_processor import (
+    DirectoryProcessor,
 )
+from code_monkey.agents.project_librarian.models import (
+    FileSummary,
+    ModuleSummary,
+)
+from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
+from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.utilities import (
     compute_file_hash,
     discover_python_files,
@@ -14,7 +17,12 @@ from code_monkey.agents.project_librarian.utilities import (
 )
 
 __all__ = [
+    "CacheManager",
+    "DirectoryProcessor",
+    "FileSummary",
+    "ModuleSummary",
     "ProjectMapper",
+    "Summarizer",
     "compute_file_hash",
     "discover_python_files",
     "parse_python_code",
