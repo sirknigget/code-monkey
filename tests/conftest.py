@@ -12,6 +12,7 @@ from pathlib import Path
 import dotenv
 import pytest
 
+logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="session", autouse=True)
