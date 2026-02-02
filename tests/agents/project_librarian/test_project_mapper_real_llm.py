@@ -14,9 +14,10 @@ from code_monkey.models.models import get_minimax_model
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 
 
-# Path to the mock project folder (requests library)
-MOCK_PROJECT_PATH = Path(__file__).parent.parent.parent.parent / "mock_project_folder"
-
+# Path to the mock project folder
+@pytest.fixture(scope="session")
+def mock_project_dir(pytestconfig) -> Path:
+    return pytestconfig.rootpath / "mock_project"
 
 class TestProjectMapperRealLLM:
     """Integration tests using real LLM and realistic mock project."""
