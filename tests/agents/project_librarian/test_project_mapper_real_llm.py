@@ -12,7 +12,7 @@ import pytest
 
 from code_monkey.models.models import get_minimax_model
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
-from tests.fixtures.conftest import crewai_working_copy
+from tests.agents.project_librarian.conftest import crewai_working_copy
 
 
 class TestProjectMapperRealLLM:
