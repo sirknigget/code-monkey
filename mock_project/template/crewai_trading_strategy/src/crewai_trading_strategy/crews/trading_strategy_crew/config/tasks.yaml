@@ -1,0 +1,52 @@
+research_strategy_task:
+  description: >
+    Research the historical daily price data for {coin_symbol}, and define a profitable trading strategy that runs daily at midnight (close time).
+    You may use the provided tools which allows you to query and analyze historical price data for {coin_symbol}.
+    The "Get Price Data For Date Range" tool only allows 30 consecutive days of data to be queried at a time, so it's only suitable for small analyses.
+    The dataset contains data for the dates {dataset_start_date} to {dataset_end_date}.
+    In order to run a thorough analysis on the whole dataset, use the "Execute Custom Analysis Code on Data" tool which will provide the whole dataset to your code for analysis.
+    
+    {previous_attempts_info}
+  expected_output: >
+    An outline of a profitable trading strategy for {coin_symbol} that runs daily at midnight (close time).
+    The strategy must be possible to implement using only the historical daily price data provided at execution.
+    The strategy can use common technical indicators derived from the daily price data (e.g., moving averages, RSI, MACD, etc.).
+    The strategy can perform multiple buy and sell actions with stop/profit conditions.
+    The strategy can examine current holdings to decide on buy/sell actions.
+  agent: strategy_researcher
+  output_file: output/trading_strategy_outline.md
+design_strategy_task:
+  description: >
+    Based on the trading strategy outline provided, create a detailed design for implementing the trading strategy as code.
+    The design should include:
+    1. A clear description of the strategy logic
+    2. Function and method signatures
+    3. Any necessary data structures
+    4. Pseudocode for the main algorithm
+    The design should be detailed enough for a developer to implement the strategy without further clarification.
+    
+    YOU ARE ONLY RESPONSIBLE FOR THE TECHNICAL DESIGN DOCUMENT, NOT THE IMPLEMENTATION.
+    
+    ***Exact code guidelines to adhere to the trading system API:***
+    {strategy_code_guidelines}
+  expected_output: >
+    A detailed design document for implementing the trading strategy as code.
+  agent: engineering_lead
+  context:
+    - research_strategy_task
+  output_file: output/trading_strategy_design.md
+implement_strategy_task:
+  description: >
+    Implement the trading strategy based on the detailed design provided by the engineering lead.
+    The implementation should be in Python and must be self-contained, ready for testing or deployment.
+    Ensure that the code adheres to best practices for readability and efficiency.
+    Your implementation MUST follow the strategy design document exactly, without deviation.
+    
+    ***Exact code guidelines to adhere to the trading system API:***
+    {strategy_code_guidelines}
+  expected_output: >
+    Return a JSON object containing a single property "implementation" with the complete string of the Python trading strategy code inside.
+  agent: developer
+  context:
+    - design_strategy_task
+  output_file: output/trading_strategy_implementation
