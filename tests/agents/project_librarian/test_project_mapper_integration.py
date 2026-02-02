@@ -641,13 +641,11 @@ class TestProjectMapperResultExtraction:
                         results = list(mapper.scan())
 
             for r in results:
-                # All results should have these attributes
+                # All results should have these attributes on TaskResult
                 assert hasattr(r, "result")
                 assert hasattr(r, "progress")
                 assert hasattr(r, "progress_max")
                 assert hasattr(r.result, "module_summaries")
-                assert hasattr(r.result, "progress")
-                assert hasattr(r.result, "progress_max")
 
     def test_progress_percent_calculation_in_results(self) -> None:
         """Test progress percent is calculated correctly in results."""
@@ -667,4 +665,4 @@ class TestProjectMapperResultExtraction:
 
             for r in results:
                 expected_percent = (r.progress / r.progress_max * 100) if r.progress_max > 0 else 0
-                assert abs(r.result.progress_percent - expected_percent) < 0.01
+                assert abs(r.progress_percent - expected_percent) < 0.01

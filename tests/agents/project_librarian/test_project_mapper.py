@@ -225,75 +225,27 @@ class TestProjectMapperEdgeCases:
 class TestProjectMapperResult:
     """Tests for ProjectMapperResult class."""
 
-    def test_creates_with_defaults(self) -> None:
-        """Should create with default values."""
+    def test_creates_with_module_summaries(self) -> None:
+        """Should create with module summaries."""
         result = ProjectMapperResult(module_summaries={})
 
         assert result.module_summaries == {}
-        assert result.progress == 0
-        assert result.progress_max == 1
-        assert result.progress_percent == 0.0
 
-    def test_creates_with_custom_values(self) -> None:
-        """Should create with custom values."""
+    def test_creates_with_summaries(self) -> None:
+        """Should create with summaries dict."""
         summaries = {Path("/src"): "module summary"}
-        result = ProjectMapperResult(
-            module_summaries=summaries,
-            progress=5,
-            progress_max=10,
-        )
+        result = ProjectMapperResult(module_summaries=summaries)
 
         assert result.module_summaries == summaries
-        assert result.progress == 5
-        assert result.progress_max == 10
-        assert result.progress_percent == 50.0
-
-    def test_progress_percent_calculation(self) -> None:
-        """Should calculate progress percent correctly."""
-        result = ProjectMapperResult(
-            module_summaries={},
-            progress=3,
-            progress_max=4,
-        )
-
-        assert result.progress_percent == 75.0
-
-    def test_progress_percent_zero_max(self) -> None:
-        """Should return 0% when progress_max is 0."""
-        result = ProjectMapperResult(
-            module_summaries={},
-            progress=0,
-            progress_max=0,
-        )
-
-        assert result.progress_percent == 0.0
-
-    def test_is_iterable(self) -> None:
-        """Should be iterable, unpacking to (module_summaries, progress, progress_max)."""
-        summaries = {Path("/src"): "summary"}
-        result = ProjectMapperResult(
-            module_summaries=summaries,
-            progress=2,
-            progress_max=5,
-        )
-
-        unpacked = list(result)
-        assert unpacked[0] == summaries
-        assert unpacked[1] == 2
-        assert unpacked[2] == 5
 
     def test_repr_format(self) -> None:
         """Should have readable string representation."""
         result = ProjectMapperResult(
             module_summaries={Path("/a"): "a", Path("/b"): "b"},
-            progress=3,
-            progress_max=5,
         )
 
         repr_str = repr(result)
         assert "modules=2" in repr_str
-        assert "progress=3/5" in repr_str
-        assert "60.0%" in repr_str
 
 
 class TestProjectMapperScanGenerator:

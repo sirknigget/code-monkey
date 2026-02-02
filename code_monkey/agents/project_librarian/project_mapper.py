@@ -30,47 +30,22 @@ class ProjectMapperResult:
 
     Attributes:
         module_summaries: Dictionary mapping directory paths to their summaries.
-        progress: Current progress value (0-based).
-        progress_max: Maximum progress value for percentage calculation.
     """
 
     def __init__(
         self,
         module_summaries: dict[Path, str],
-        progress: int = 0,
-        progress_max: int = 1,
     ) -> None:
         """Initialize result container.
 
         Args:
             module_summaries: Dictionary mapping directory paths to their summaries.
-            progress: Current progress value.
-            progress_max: Maximum progress value.
         """
         self.module_summaries = module_summaries
-        self.progress = progress
-        self.progress_max = progress_max
-
-    @property
-    def progress_percent(self) -> float:
-        """Return progress as a percentage of max."""
-        if self.progress_max == 0:
-            return 0.0
-        return (self.progress / self.progress_max) * 100
-
-    def __iter__(self):
-        """Allow unpacking as (module_summaries, progress, progress_max)."""
-        return iter((self.module_summaries, self.progress, self.progress_max))
 
     def __repr__(self) -> str:
         """String representation."""
-        return (
-            f"ProjectMapperResult("
-            f"modules={len(self.module_summaries)}, "
-            f"progress={self.progress}/{self.progress_max} "
-            f"({self.progress_percent:.1f}%)"
-            f")"
-        )
+        return f"ProjectMapperResult(modules={len(self.module_summaries)})"
 
 
 class ProjectMapper:
@@ -144,7 +119,7 @@ class ProjectMapper:
         # Progress points: 1 (initial scan) + N (directory processing) + 1 (project context)
         # For the initial scan phase, we use progress_max = 1 (just the scan operation)
         yield TaskResult(
-            result=ProjectMapperResult(module_summaries={}, progress=0, progress_max=1),
+            result=ProjectMapperResult(module_summaries={}),
             progress=0,
             progress_max=1,
         )
@@ -187,7 +162,7 @@ class ProjectMapper:
 
         # Mark initial scan complete (1 point used)
         yield TaskResult(
-            result=ProjectMapperResult(module_summaries={}, progress=1, progress_max=total_progress_max),
+            result=ProjectMapperResult(module_summaries={}),
             progress=1,
             progress_max=total_progress_max,
         )
@@ -208,11 +183,7 @@ class ProjectMapper:
                 mapped_progress = 1
 
             yield TaskResult(
-                result=ProjectMapperResult(
-                    module_summaries=task_result.result,
-                    progress=mapped_progress,
-                    progress_max=total_progress_max,
-                ),
+                result=ProjectMapperResult(module_summaries=task_result.result),
                 progress=mapped_progress,
                 progress_max=total_progress_max,
             )
@@ -226,11 +197,7 @@ class ProjectMapper:
         self._project_context = project_context
 
         # Final result with complete progress
-        final_result = ProjectMapperResult(
-            module_summaries=module_summaries,
-            progress=total_progress_max,
-            progress_max=total_progress_max,
-        )
+        final_result = ProjectMapperResult(module_summaries=module_summaries)
         yield TaskResult(
             result=final_result,
             progress=total_progress_max,
