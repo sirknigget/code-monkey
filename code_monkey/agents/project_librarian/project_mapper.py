@@ -20,6 +20,7 @@ from code_monkey.agents.project_librarian.utils import (
     compute_file_hash,
     discover_python_files,
 )
+from code_monkey.utils.task_result import TaskResult
 
 
 class ProjectMapper:
@@ -121,8 +122,15 @@ class ProjectMapper:
             # Save new hashes
             self._cache.save_hashes(current_hashes)
 
-        # Process changed directories
-        module_summaries = self._processor.process_changed_directories(changed_dirs)
+        # Process changed directories (generator of TaskResult)
+        task_results = self._processor.process_changed_directories(changed_dirs)
+
+        # Consume generator and get final result
+        module_summaries: dict[Path, str] = {}
+        for task_result in task_results:
+            # Can track progress via task_result.progress / task_result.progress_max
+            if task_result.progress == task_result.progress_max:
+                module_summaries = task_result.result
 
         # Generate project context
         project_context = self._summarizer.generate_project_context(

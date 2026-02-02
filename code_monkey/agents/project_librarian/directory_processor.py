@@ -10,6 +10,7 @@ from code_monkey.agents.project_librarian.utils import (
     discover_python_files,
     parse_python_code,
 )
+from code_monkey.utils.task_result import TaskResult
 
 
 class DirectoryProcessor:
@@ -147,23 +148,33 @@ class DirectoryProcessor:
 
     def process_changed_directories(
         self, changed_dirs: set[Path]
-    ) -> dict[Path, str]:
+    ) -> TaskResult[dict[Path, str]]:
         """Process only specified directories and their children.
 
         Args:
             changed_dirs: Set of directories that have changed.
 
         Returns:
-            Dictionary mapping directory paths to their summaries.
+            TaskResult containing:
+                - result: Dictionary mapping directory paths to their summaries
+                - progress: Current directory index (0-based)
+                - progress_max: Total number of directories to process
         """
         results: dict[Path, str] = {}
 
         # Sort by path depth to process parent directories first
         sorted_dirs = sorted(changed_dirs, key=lambda p: len(p.parts))
+        total_dirs = len(sorted_dirs)
 
-        for directory in sorted_dirs:
+        for index, directory in enumerate(sorted_dirs):
             if directory in results:
-                continue  # Already processed as child
+                # Yield progress update even for skipped directories
+                yield TaskResult(
+                    result=results,
+                    progress=index,
+                    progress_max=total_dirs,
+                )
+                continue
 
             # Get parent summary if available
             parent_summary = None
@@ -175,7 +186,19 @@ class DirectoryProcessor:
             summary = self._process_directory_top_down(directory, parent_summary)
             results[directory] = summary
 
-        return results
+            # Yield progress update after each directory is processed
+            yield TaskResult(
+                result=results,
+                progress=index + 1,
+                progress_max=total_dirs,
+            )
+
+        # Final result with complete progress
+        yield TaskResult(
+            result=results,
+            progress=total_dirs,
+            progress_max=total_dirs,
+        )
 
 
 __all__ = ["DirectoryProcessor"]

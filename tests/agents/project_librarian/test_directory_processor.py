@@ -11,6 +11,7 @@ from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.directory_processor import DirectoryProcessor
 from code_monkey.agents.project_librarian.models import FileSummary
 from code_monkey.agents.project_librarian.summarizer import Summarizer
+from code_monkey.utils.task_result import TaskResult
 
 
 class MockSummarizer:
@@ -262,32 +263,127 @@ class TestProcessChangedDirectories:
 
         (tmp_path / "test.py").write_text("x = 1")
 
-        result = processor.process_changed_directories({tmp_path})
+        # Collect all TaskResult yields from the generator
+        results_list = list(processor.process_changed_directories({tmp_path}))
 
-        assert tmp_path in result
+        # Should have multiple progress updates plus final result
+        assert len(results_list) >= 1
 
-    def test_returns_dict_of_summaries(self, tmp_path: Path) -> None:
-        """Should return dict mapping dirs to summaries."""
+        # Final result should contain the directory
+        final_result = results_list[-1]
+        assert isinstance(final_result, TaskResult)
+        assert tmp_path in final_result.result
+
+    def test_returns_task_result_generator(self, tmp_path: Path) -> None:
+        """Should return TaskResult objects via generator."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
         (tmp_path / "file.py").write_text("x = 1")
 
-        result = processor.process_changed_directories({tmp_path})
+        results_gen = processor.process_changed_directories({tmp_path})
 
-        assert isinstance(result, dict)
-        assert all(isinstance(k, Path) and isinstance(v, str) for k, v in result.items())
+        # Should be a generator
+        import types
+        assert isinstance(results_gen, types.GeneratorType)
+
+        # Consume and check TaskResult structure
+        for task_result in results_gen:
+            assert isinstance(task_result, TaskResult)
+            assert isinstance(task_result.result, dict)
+            assert task_result.progress >= 0
+            assert task_result.progress_max >= 0
+
+    def test_progress_increases_with_each_directory(self, tmp_path: Path) -> None:
+        """Should report progress that increases with each directory."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer("summary")
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        # Create multiple directories
+        (tmp_path / "test.py").write_text("x = 1")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "module.py").write_text("y = 2")
+
+        results = list(processor.process_changed_directories({tmp_path, tmp_path / "src"}))
+
+        # Progress should monotonically increase
+        progress_values = [r.progress for r in results]
+        for i in range(1, len(progress_values)):
+            assert progress_values[i] >= progress_values[i - 1]
+
+    def test_progress_max_matches_total_directories(self, tmp_path: Path) -> None:
+        """Should set progress_max to total directories to process."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer("summary")
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        # Create 3 directories
+        (tmp_path / "test.py").write_text("x = 1")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "module.py").write_text("y = 2")
+        (tmp_path / "lib").mkdir()
+        (tmp_path / "lib" / "util.py").write_text("z = 3")
+
+        results = list(processor.process_changed_directories({
+            tmp_path,
+            tmp_path / "src",
+            tmp_path / "lib",
+        }))
+
+        # Final result should have progress_max = 3
+        final_result = results[-1]
+        assert final_result.progress_max == 3
+
+    def test_progress_percent_calculation(self, tmp_path: Path) -> None:
+        """Should correctly calculate progress percentage."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer("summary")
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        (tmp_path / "test.py").write_text("x = 1")
+
+        results = list(processor.process_changed_directories({tmp_path}))
+
+        # Check progress_percent on final result
+        final = results[-1]
+        assert final.progress == final.progress_max
+        assert final.progress_percent == 100.0
 
     def test_handles_empty_changed_dirs(self, tmp_path: Path) -> None:
-        """Should return empty dict for empty changed_dirs set."""
+        """Should return TaskResult with empty dict for empty changed_dirs."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer()
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        result = processor.process_changed_directories(set())
+        results = list(processor.process_changed_directories(set()))
 
-        assert result == {}
+        # Should yield exactly one result (the final empty result)
+        assert len(results) == 1
+
+        final = results[0]
+        assert isinstance(final, TaskResult)
+        assert final.result == {}
+        assert final.progress == 0
+        assert final.progress_max == 0
+
+    def test_skips_already_processed_child_directories(self, tmp_path: Path) -> None:
+        """Should skip child directories already processed as part of parent."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer("summary")
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        (tmp_path / "test.py").write_text("x = 1")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "module.py").write_text("y = 2")
+
+        # Process parent and child - child should be skipped since parent includes it
+        results = list(processor.process_changed_directories({tmp_path, tmp_path / "src"}))
+
+        # Should have progress updates but child should be in final result
+        final = results[-1]
+        assert isinstance(final.result, dict)
 
 
 class TestSummarizeFileWrapper:
