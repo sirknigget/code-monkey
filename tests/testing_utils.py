@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def print_progress_bar(
     progress: int, progress_max: int, prefix: str = "", width: int = 40
 ) -> None:

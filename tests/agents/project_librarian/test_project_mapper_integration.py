@@ -8,6 +8,7 @@ For full integration tests with real LLM, use the actual ProjectMapper.scan()
 method with a configured LLM.
 """
 
+import logging
 import sys
 import tempfile
 import textwrap
@@ -18,6 +19,8 @@ import pytest
 
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from tests.testing_utils import print_progress_bar
+
+logger = logging.getLogger(__name__)
 
 
 class TestProjectMapperFreshScan:
@@ -457,7 +460,7 @@ class TestProjectMapperProgressTracking:
             (tmppath / "src" / "module.py").write_text("class Module: pass")
 
             # Run scan and capture progress bar output (with mocked summarizer)
-            print("[INTEGRATION] Running scan with progress bar...")
+            logger.info("[INTEGRATION] Running scan with progress bar...")
             results = []
             with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
                 with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
@@ -482,7 +485,7 @@ class TestProjectMapperProgressTracking:
             for i in range(1, len(progresses)):
                 assert progresses[i] >= progresses[i - 1]
 
-            print(f"[INTEGRATION] Scan complete. {len(results)} progress updates.")
+            logger.info(f"[INTEGRATION] Scan complete. {len(results)} progress updates.")
 
     def test_update_progress_bar_display(self, capsys) -> None:
         """Test that update() displays progress bar during execution."""
@@ -506,7 +509,7 @@ class TestProjectMapperProgressTracking:
             (tmppath / "new_module.py").write_text("class NewModule: pass")
 
             # Run update with progress bar
-            print("[INTEGRATION] Running update with progress bar...")
+            logger.info("[INTEGRATION] Running update with progress bar...")
             results = []
             with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
                 with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
@@ -526,7 +529,7 @@ class TestProjectMapperProgressTracking:
             final = results[-1]
             assert final.progress == final.progress_max
 
-            print(f"[INTEGRATION] Update complete. {len(results)} progress updates.")
+            logger.info(f"[INTEGRATION] Update complete. {len(results)} progress updates.")
 
     def test_progress_with_multiple_directories(self, capsys) -> None:
         """Test progress tracking with multiple directories."""
@@ -547,7 +550,7 @@ class TestProjectMapperProgressTracking:
             (tmppath / "tests").mkdir()
             (tmppath / "tests" / "test_main.py").write_text("def test(): pass")
 
-            print("[INTEGRATION] Scanning multi-module project...")
+            logger.info("[INTEGRATION] Scanning multi-module project...")
             with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
                 with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
                     with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
@@ -567,7 +570,7 @@ class TestProjectMapperProgressTracking:
             final_progress, final_max = progress_values[-1]
             assert final_progress == final_max
 
-            print(f"[INTEGRATION] Multi-module scan: {len(results)} progress updates.")
+            logger.info(f"[INTEGRATION] Multi-module scan: {len(results)} progress updates.")
 
 
 class TestProjectMapperResultExtraction:

@@ -1,7 +1,10 @@
+import logging
 import pytest
 from dotenv import load_dotenv
 
 from src.agents.web_researcher.tools import google_search_tool, NUM_GOOGLE_RESULTS
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 
@@ -11,12 +14,12 @@ def test_google_search_tool():
     query = "LangChain"
     results = google_search_tool.invoke(query)
 
-    print(f"\n=== Google Search Results for '{query}' ===\n")
+    logger.info(f"\n=== Google Search Results for '{query}' ===\n")
     for i, result in enumerate(results, 1):
-        print(f"{i}. {result['title']}")
-        print(f"   Link: {result['link']}")
-        print(f"   Snippet: {result['snippet']}")
-        print()
+        logger.info(f"{i}. {result['title']}")
+        logger.info(f"   Link: {result['link']}")
+        logger.info(f"   Snippet: {result['snippet']}")
+        logger.info("")
 
     assert isinstance(results, list)
     assert len(results) > 0 and len(results) <= NUM_GOOGLE_RESULTS

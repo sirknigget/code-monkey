@@ -4,12 +4,15 @@ Provides fixtures for copying the crewai_trading_strategy template
 to isolated working directories for testing.
 """
 
+import logging
 import shutil
 import tempfile
 from pathlib import Path
 
 import dotenv
 import pytest
+
+logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="session", autouse=True)
 def load_env():

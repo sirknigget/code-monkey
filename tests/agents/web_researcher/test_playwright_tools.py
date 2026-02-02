@@ -1,8 +1,11 @@
+import logging
 import pytest
 from dotenv import load_dotenv
 
 from src.agents.web_researcher.tools import PlaywrightTools
 from src.utils.json_utils import dump_object
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 
@@ -47,7 +50,7 @@ async def test_playwright_tools_navigate():
     result = await navigate_tool.ainvoke("https://example.com")
     assert "returned status code" in result
     assert "200" in result
-    print(f"Navigation result:\n {dump_object(result)}")
+    logger.info(f"Navigation result:\n {dump_object(result)}")
 
     await pt.teardown()
 

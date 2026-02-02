@@ -1,8 +1,11 @@
+import logging
 import pytest
 from dotenv import load_dotenv
 
 from code_monkey.agents.web_researcher.web_researcher import WebResearcher
 from code_monkey.models.models import get_minimax_model
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 
@@ -16,10 +19,10 @@ async def test_web_researcher_search():
     query = "What is the latest price of BTC and its recent trend?"
     result = await researcher.search(query)
 
-    print(f"\n=== Web Researcher Result for '{query}' ===")
-    print(f"Thread ID: {result.thread_id}")
-    print(f"Result: {result.result}")
-    print()
+    logger.info(f"\n=== Web Researcher Result for '{query}' ===")
+    logger.info(f"Thread ID: {result.thread_id}")
+    logger.info(f"Result: {result.result}")
+    logger.info("")
 
     assert result is not None
     assert result.thread_id is not None
