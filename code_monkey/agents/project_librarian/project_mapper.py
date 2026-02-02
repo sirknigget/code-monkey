@@ -5,9 +5,11 @@ modified files. Uses hash-based change detection and LLM summarization.
 
 Classes:
 - ProjectMapper: Main orchestrator for project mapping
+- ProjectMapperResult: Result type containing module summaries and progress info
 """
 
 from pathlib import Path
+from typing import Any, Generator
 
 from langchain_core.language_models import BaseChatModel
 
@@ -23,6 +25,54 @@ from code_monkey.agents.project_librarian.utils import (
 from code_monkey.utils.task_result import TaskResult
 
 
+class ProjectMapperResult:
+    """Result container for ProjectMapper operations.
+
+    Attributes:
+        module_summaries: Dictionary mapping directory paths to their summaries.
+        progress: Current progress value (0-based).
+        progress_max: Maximum progress value for percentage calculation.
+    """
+
+    def __init__(
+        self,
+        module_summaries: dict[Path, str],
+        progress: int = 0,
+        progress_max: int = 1,
+    ) -> None:
+        """Initialize result container.
+
+        Args:
+            module_summaries: Dictionary mapping directory paths to their summaries.
+            progress: Current progress value.
+            progress_max: Maximum progress value.
+        """
+        self.module_summaries = module_summaries
+        self.progress = progress
+        self.progress_max = progress_max
+
+    @property
+    def progress_percent(self) -> float:
+        """Return progress as a percentage of max."""
+        if self.progress_max == 0:
+            return 0.0
+        return (self.progress / self.progress_max) * 100
+
+    def __iter__(self):
+        """Allow unpacking as (module_summaries, progress, progress_max)."""
+        return iter((self.module_summaries, self.progress, self.progress_max))
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return (
+            f"ProjectMapperResult("
+            f"modules={len(self.module_summaries)}, "
+            f"progress={self.progress}/{self.progress_max} "
+            f"({self.progress_percent:.1f}%)"
+            f")"
+        )
+
+
 class ProjectMapper:
     """Main orchestrator for project mapping.
 
@@ -34,8 +84,9 @@ class ProjectMapper:
 
     Usage:
         mapper = ProjectMapper(root=Path("."), llm=llm)
-        summaries = mapper.scan()  # Full scan
-        summaries = mapper.update([Path("src/new_file.py")])  # Incremental
+        for result in mapper.scan():  # Generator of TaskResult
+            print(f"Progress: {result.progress_percent:.1f}%")
+        summaries = result.result.module_summaries  # Final result
         context = mapper.get_project_context()  # Get cached/generated context
     """
 
@@ -80,16 +131,24 @@ class ProjectMapper:
 
     def _run(
         self, changed_dirs: set[Path] | None = None
-    ) -> dict[Path, str]:
+    ) -> Generator[TaskResult[ProjectMapperResult], Any, None]:
         """Internal method for scanning/updating.
 
         Args:
             changed_dirs: If provided, only process these directories.
                          If None, compute changed files via hash comparison.
 
-        Returns:
-            Dictionary mapping directory paths to module summaries.
+        Yields:
+            TaskResult containing ProjectMapperResult with progress tracking.
         """
+        # Progress points: 1 (initial scan) + N (directory processing) + 1 (project context)
+        # For the initial scan phase, we use progress_max = 1 (just the scan operation)
+        yield TaskResult(
+            result=ProjectMapperResult(module_summaries={}, progress=0, progress_max=1),
+            progress=0,
+            progress_max=1,
+        )
+
         # Load cached hashes
         cached_hashes = self._cache.load_hashes()
 
@@ -122,41 +181,82 @@ class ProjectMapper:
             # Save new hashes
             self._cache.save_hashes(current_hashes)
 
+        # Calculate total progress: 1 (scan) + N (dirs) + 1 (project context)
+        num_dirs = len(changed_dirs)
+        total_progress_max = num_dirs + 2  # +1 for scan, +1 for project context
+
+        # Mark initial scan complete (1 point used)
+        yield TaskResult(
+            result=ProjectMapperResult(module_summaries={}, progress=1, progress_max=total_progress_max),
+            progress=1,
+            progress_max=total_progress_max,
+        )
+
         # Process changed directories (generator of TaskResult)
         task_results = self._processor.process_changed_directories(changed_dirs)
 
         # Consume generator and get final result
+        # Directory progress starts at 1 (after initial scan)
         module_summaries: dict[Path, str] = {}
         for task_result in task_results:
-            # Can track progress via task_result.progress / task_result.progress_max
-            if task_result.progress == task_result.progress_max:
-                module_summaries = task_result.result
+            # Map directory processor progress to our total progress
+            # Directory progress: 0 to N, we map to: 1 to N+1
+            dir_progress = task_result.progress
+            if dir_progress > 0:
+                mapped_progress = dir_progress  # dir_progress already 1-indexed
+            else:
+                mapped_progress = 1
 
-        # Generate project context
+            yield TaskResult(
+                result=ProjectMapperResult(
+                    module_summaries=task_result.result,
+                    progress=mapped_progress,
+                    progress_max=total_progress_max,
+                ),
+                progress=mapped_progress,
+                progress_max=total_progress_max,
+            )
+            module_summaries = task_result.result
+
+        # Generate project context (final 1 point)
         project_context = self._summarizer.generate_project_context(
             module_summaries, project_name=self.root.name
         )
         self._cache.save_project_context(project_context)
         self._project_context = project_context
 
-        return module_summaries
+        # Final result with complete progress
+        final_result = ProjectMapperResult(
+            module_summaries=module_summaries,
+            progress=total_progress_max,
+            progress_max=total_progress_max,
+        )
+        yield TaskResult(
+            result=final_result,
+            progress=total_progress_max,
+            progress_max=total_progress_max,
+        )
 
-    def scan(self) -> dict[Path, str]:
+    def scan(self) -> Generator[TaskResult[ProjectMapperResult], Any, None]:
         """Perform a full project scan.
 
-        Returns:
-            Dictionary mapping directory paths to module summaries.
+        Yields:
+            TaskResult containing ProjectMapperResult with progress tracking.
+            Final result contains module_summaries dictionary.
         """
-        return self._run(changed_dirs=None)
+        yield from self._run(changed_dirs=None)
 
-    def update(self, paths: list[Path]) -> dict[Path, str]:
+    def update(
+        self, paths: list[Path]
+    ) -> Generator[TaskResult[ProjectMapperResult], Any, None]:
         """Update specific paths and their parent directories.
 
         Args:
             paths: List of file or directory paths to update.
 
-        Returns:
-            Dictionary mapping directory paths to module summaries.
+        Yields:
+            TaskResult containing ProjectMapperResult with progress tracking.
+            Final result contains module_summaries dictionary.
         """
         # Compute changed directories from paths
         changed_dirs: set[Path] = set()
@@ -169,7 +269,7 @@ class ProjectMapper:
                 if abs_path.parent >= self.root:
                     changed_dirs.add(abs_path.parent)
 
-        return self._run(changed_dirs=changed_dirs)
+        yield from self._run(changed_dirs=changed_dirs)
 
     def get_project_context(self) -> str:
         """Get project context.
@@ -191,4 +291,4 @@ class ProjectMapper:
         return self._project_context or ""
 
 
-__all__ = ["ProjectMapper"]
+__all__ = ["ProjectMapper", "ProjectMapperResult"]

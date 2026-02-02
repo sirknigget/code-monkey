@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any, Generator
 
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.models import FileSummary
@@ -10,6 +11,7 @@ from code_monkey.agents.project_librarian.utils import (
     discover_python_files,
     parse_python_code,
 )
+from code_monkey.utils import TaskResult
 from code_monkey.utils.task_result import TaskResult
 
 
@@ -148,7 +150,7 @@ class DirectoryProcessor:
 
     def process_changed_directories(
         self, changed_dirs: set[Path]
-    ) -> TaskResult[dict[Path, str]]:
+    ) -> Generator[TaskResult, Any, None]:
         """Process only specified directories and their children.
 
         Args:

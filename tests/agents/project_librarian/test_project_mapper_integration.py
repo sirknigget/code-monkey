@@ -8,6 +8,7 @@ For full integration tests with real LLM, use the actual ProjectMapper.scan()
 method with a configured LLM.
 """
 
+import sys
 import tempfile
 import textwrap
 from pathlib import Path
@@ -16,6 +17,33 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
+
+
+def print_progress_bar(
+    progress: int, progress_max: int, prefix: str = "", width: int = 40
+) -> None:
+    """Print a progress bar to stdout.
+
+    Args:
+        progress: Current progress value.
+        progress_max: Maximum progress value.
+        prefix: Prefix string to print before the bar.
+        width: Width of the progress bar in characters.
+    """
+    if progress_max == 0:
+        percent = 0.0
+    else:
+        percent = (progress / progress_max) * 100
+
+    filled = int(width * progress // progress_max) if progress_max > 0 else 0
+    bar = "█" * filled + "░" * (width - filled)
+
+    # Print progress bar with prefix
+    print(f"\r{prefix} |{bar}| {percent:5.1f}% ({progress}/{progress_max})", end="", flush=True)
+
+    # Print newline when complete
+    if progress == progress_max:
+        print()
 
 
 class TestProjectMapperFreshScan:
@@ -434,3 +462,209 @@ class TestProjectMapperWorkflowIntegration:
 
             # File should no longer be in current hashes
             assert str(tmppath / "temp.py") not in current_hashes
+
+
+class TestProjectMapperProgressTracking:
+    """Tests for progress tracking with progress bar display."""
+
+    def test_scan_progress_bar_display(self, capsys) -> None:
+        """Test that scan() displays progress bar during execution."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            # Create mock project structure
+            (tmppath / "main.py").write_text("class Main: pass")
+            (tmppath / "utils.py").write_text("def helper(): pass")
+            (tmppath / "src").mkdir()
+            (tmppath / "src" / "module.py").write_text("class Module: pass")
+
+            # Run scan and capture progress bar output (with mocked summarizer)
+            print("[INTEGRATION] Running scan with progress bar...")
+            results = []
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        for task_result in mapper.scan():
+                            print_progress_bar(
+                                task_result.progress,
+                                task_result.progress_max,
+                                prefix="[SCAN]",
+                            )
+                            results.append(task_result)
+
+            # Verify we got progress updates
+            assert len(results) >= 1
+
+            # Final result should have complete progress
+            final = results[-1]
+            assert final.progress == final.progress_max
+
+            # Progress should increase monotonically
+            progresses = [r.progress for r in results]
+            for i in range(1, len(progresses)):
+                assert progresses[i] >= progresses[i - 1]
+
+            print(f"[INTEGRATION] Scan complete. {len(results)} progress updates.")
+
+    def test_update_progress_bar_display(self, capsys) -> None:
+        """Test that update() displays progress bar during execution."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            # Create initial files
+            (tmppath / "main.py").write_text("class Main: pass")
+
+            # Run initial scan (with mocked summarizer)
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        list(mapper.scan())
+
+            # Add new files
+            (tmppath / "new_module.py").write_text("class NewModule: pass")
+
+            # Run update with progress bar
+            print("[INTEGRATION] Running update with progress bar...")
+            results = []
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        for task_result in mapper.update([tmppath / "new_module.py"]):
+                            print_progress_bar(
+                                task_result.progress,
+                                task_result.progress_max,
+                                prefix="[UPDATE]",
+                            )
+                            results.append(task_result)
+
+            # Verify we got progress updates
+            assert len(results) >= 1
+
+            # Final result should have complete progress
+            final = results[-1]
+            assert final.progress == final.progress_max
+
+            print(f"[INTEGRATION] Update complete. {len(results)} progress updates.")
+
+    def test_progress_with_multiple_directories(self, capsys) -> None:
+        """Test progress tracking with multiple directories."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            # Create multi-module structure
+            (tmppath / "main.py").write_text("class Main: pass")
+            (tmppath / "api").mkdir()
+            (tmppath / "api" / "__init__.py").write_text("")
+            (tmppath / "api" / "routes.py").write_text("def route(): pass")
+            (tmppath / "utils").mkdir()
+            (tmppath / "utils" / "helpers.py").write_text("def help(): pass")
+            (tmppath / "tests").mkdir()
+            (tmppath / "tests" / "test_main.py").write_text("def test(): pass")
+
+            print("[INTEGRATION] Scanning multi-module project...")
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        results = list(mapper.scan())
+
+            # Should have progress for each stage
+            assert len(results) >= 1
+
+            # Track progress values
+            progress_values = [(r.progress, r.progress_max) for r in results]
+
+            # After initial scan, progress max should be constant
+            subsequent_maxes = [pm for _, pm in progress_values[1:]]
+            assert len(set(subsequent_maxes)) == 1
+
+            # Final progress should equal max
+            final_progress, final_max = progress_values[-1]
+            assert final_progress == final_max
+
+            print(f"[INTEGRATION] Multi-module scan: {len(results)} progress updates.")
+
+
+class TestProjectMapperResultExtraction:
+    """Tests for extracting results from TaskResult generator."""
+
+    def test_extract_module_summaries_from_result(self) -> None:
+        """Test extracting module_summaries from TaskResult."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            (tmppath / "file.py").write_text("x = 1")
+
+            # Get final result
+            final_result = None
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        for task_result in mapper.scan():
+                            final_result = task_result
+
+            assert final_result is not None
+
+            # Extract module summaries
+            module_summaries = final_result.result.module_summaries
+            assert isinstance(module_summaries, dict)
+
+    def test_result_contains_correct_types(self) -> None:
+        """Test that result contains correct types."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            (tmppath / "main.py").write_text("class Main: pass")
+
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        results = list(mapper.scan())
+
+            for r in results:
+                # All results should have these attributes
+                assert hasattr(r, "result")
+                assert hasattr(r, "progress")
+                assert hasattr(r, "progress_max")
+                assert hasattr(r.result, "module_summaries")
+                assert hasattr(r.result, "progress")
+                assert hasattr(r.result, "progress_max")
+
+    def test_progress_percent_calculation_in_results(self) -> None:
+        """Test progress percent is calculated correctly in results."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            mock_llm = MagicMock()
+            mapper = ProjectMapper(root=tmppath, llm=mock_llm)
+
+            (tmppath / "file.py").write_text("x = 1")
+
+            with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+                with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                    with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                        results = list(mapper.scan())
+
+            for r in results:
+                expected_percent = (r.progress / r.progress_max * 100) if r.progress_max > 0 else 0
+                assert abs(r.result.progress_percent - expected_percent) < 0.01

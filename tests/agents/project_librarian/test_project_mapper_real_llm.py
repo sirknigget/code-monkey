@@ -6,6 +6,7 @@ to test ProjectMapper's full functionality with a realistic mock project.
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import dotenv
@@ -13,6 +14,33 @@ import pytest
 
 from code_monkey.models.models import get_minimax_model
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
+
+
+def print_progress_bar(
+    progress: int, progress_max: int, prefix: str = "", width: int = 40
+) -> None:
+    """Print a progress bar to stdout.
+
+    Args:
+        progress: Current progress value.
+        progress_max: Maximum progress value.
+        prefix: Prefix string to print before the bar.
+        width: Width of the progress bar in characters.
+    """
+    if progress_max == 0:
+        percent = 0.0
+    else:
+        percent = (progress / progress_max) * 100
+
+    filled = int(width * progress // progress_max) if progress_max > 0 else 0
+    bar = "█" * filled + "░" * (width - filled)
+
+    # Print progress bar with prefix
+    print(f"\r{prefix} |{bar}| {percent:5.1f}% ({progress}/{progress_max})", end="", flush=True)
+
+    # Print newline when complete
+    if progress == progress_max:
+        print()
 
 class TestProjectMapperRealLLM:
     """Integration tests using real LLM and realistic mock project."""
@@ -35,9 +63,18 @@ class TestProjectMapperRealLLM:
         llm = get_minimax_model()
         mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
-        # Run full scan
+        # Run full scan with progress bar
         print("[TEST] Running full scan with real LLM...")
-        module_summaries = mapper.scan()
+        print("[PROGRESS]")
+        module_summaries = None
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
+            if task_result.progress == task_result.progress_max:
+                module_summaries = task_result.result.module_summaries
 
         # Verify scan returned results - scan() returns dict[Path, str] of module summaries
         assert module_summaries is not None
@@ -85,10 +122,20 @@ class TestProjectMapperRealLLM:
         llm = get_minimax_model()
         mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
-        # First scan
+        # First scan with progress bar
         print("[TEST] Running initial scan...")
-        result1 = mapper.scan()
-        assert len(result1) > 0
+        print("[PROGRESS]")
+        result1 = None
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
+            if task_result.progress == task_result.progress_max:
+                result1 = task_result.result.module_summaries
+
+        assert result1 is not None and len(result1) > 0
         print(f"[TEST] Initial scan complete: {len(result1)} modules")
 
         # Modify a file in the mock project
@@ -103,7 +150,17 @@ class TestProjectMapperRealLLM:
         try:
             # Second scan should detect the change and return module summaries
             print("[TEST] Running incremental scan after file modification...")
-            result2 = mapper.scan()
+            print("[PROGRESS]")
+            result2 = None
+            for task_result in mapper.scan():
+                print_progress_bar(
+                    task_result.progress,
+                    task_result.progress_max,
+                    prefix="[SCAN]",
+                )
+                if task_result.progress == task_result.progress_max:
+                    result2 = task_result.result.module_summaries
+
             assert result2 is not None
             assert len(result2) >= 1  # Should return at least some module summaries
             print(f"[TEST] Incremental scan complete: {len(result2)} modules")
@@ -123,7 +180,13 @@ class TestProjectMapperRealLLM:
 
         # Initial scan
         print("[TEST] Running initial scan...")
-        mapper.scan()
+        print("[PROGRESS]")
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
         print("[TEST] Initial scan complete")
 
         # Specify specific files to update
@@ -135,7 +198,17 @@ class TestProjectMapperRealLLM:
 
         # Run update with specific files - returns dict[Path, str] of module summaries
         print("[TEST] Running update for specified files...")
-        result = mapper.update(files_to_update)
+        print("[PROGRESS]")
+        result = None
+        for task_result in mapper.update(files_to_update):
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[UPDATE]",
+            )
+            if task_result.progress == task_result.progress_max:
+                result = task_result.result.module_summaries
+
         assert result is not None
         assert len(result) >= 1  # Should return module summaries
         print(f"[TEST] Update complete: {len(result)} modules processed")
@@ -151,7 +224,13 @@ class TestProjectMapperRealLLM:
 
         # Run scan
         print("[TEST] Running scan...")
-        mapper.scan()
+        print("[PROGRESS]")
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
 
         # Check that cache directory has module summaries
         cache_path = mock_project_working_copy / ".codemonkey"
@@ -179,7 +258,13 @@ class TestProjectMapperRealLLM:
 
         # Initial scan
         print("[TEST] Running initial scan...")
-        mapper.scan()
+        print("[PROGRESS]")
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
 
         # Create new mapper instance (simulates restart)
         print("[TEST] Creating new mapper instance (simulating restart)...")
@@ -224,7 +309,13 @@ class TestProjectMapperRealLLMWithModifiedProject:
 
         # Initial scan
         print("[TEST] Running initial scan...")
-        mapper.scan()
+        print("[PROGRESS]")
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
 
         # Create a new subdirectory with files
         new_dir = mock_project_working_copy / "src" / "utils" / "new_feature"
@@ -237,9 +328,19 @@ class TestProjectMapperRealLLMWithModifiedProject:
         try:
             # Scan again - should discover new files
             print("[TEST] Running re-scan to discover new files...")
-            result = mapper.scan()
+            print("[PROGRESS]")
+            result = None
+            for task_result in mapper.scan():
+                print_progress_bar(
+                    task_result.progress,
+                    task_result.progress_max,
+                    prefix="[SCAN]",
+                )
+                if task_result.progress == task_result.progress_max:
+                    result = task_result.result.module_summaries
+
             # New files should be processed - returns module summaries dict
-            assert len(result) >= 1
+            assert result is not None and len(result) >= 1
             print(f"[TEST] Re-scan complete: {len(result)} modules")
             print("[TEST] test_handles_new_subdirectory PASSED")
         finally:
@@ -257,7 +358,13 @@ class TestProjectMapperRealLLMWithModifiedProject:
 
         # Run scan
         print("[TEST] Running scan...")
-        mapper.scan()
+        print("[PROGRESS]")
+        for task_result in mapper.scan():
+            print_progress_bar(
+                task_result.progress,
+                task_result.progress_max,
+                prefix="[SCAN]",
+            )
 
         # Check for file-specific summaries in cache
         cache_path = mock_project_working_copy / ".codemonkey"

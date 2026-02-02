@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
+from code_monkey.agents.project_librarian.project_mapper import (
+    ProjectMapper,
+    ProjectMapperResult,
+)
 
 
 class TestProjectMapperInitialization:
@@ -217,3 +220,238 @@ class TestProjectMapperEdgeCases:
         import re
         hash_value = list(hashes.values())[0]
         assert re.match(r'^[0-9a-f]{64}$', hash_value)
+
+
+class TestProjectMapperResult:
+    """Tests for ProjectMapperResult class."""
+
+    def test_creates_with_defaults(self) -> None:
+        """Should create with default values."""
+        result = ProjectMapperResult(module_summaries={})
+
+        assert result.module_summaries == {}
+        assert result.progress == 0
+        assert result.progress_max == 1
+        assert result.progress_percent == 0.0
+
+    def test_creates_with_custom_values(self) -> None:
+        """Should create with custom values."""
+        summaries = {Path("/src"): "module summary"}
+        result = ProjectMapperResult(
+            module_summaries=summaries,
+            progress=5,
+            progress_max=10,
+        )
+
+        assert result.module_summaries == summaries
+        assert result.progress == 5
+        assert result.progress_max == 10
+        assert result.progress_percent == 50.0
+
+    def test_progress_percent_calculation(self) -> None:
+        """Should calculate progress percent correctly."""
+        result = ProjectMapperResult(
+            module_summaries={},
+            progress=3,
+            progress_max=4,
+        )
+
+        assert result.progress_percent == 75.0
+
+    def test_progress_percent_zero_max(self) -> None:
+        """Should return 0% when progress_max is 0."""
+        result = ProjectMapperResult(
+            module_summaries={},
+            progress=0,
+            progress_max=0,
+        )
+
+        assert result.progress_percent == 0.0
+
+    def test_is_iterable(self) -> None:
+        """Should be iterable, unpacking to (module_summaries, progress, progress_max)."""
+        summaries = {Path("/src"): "summary"}
+        result = ProjectMapperResult(
+            module_summaries=summaries,
+            progress=2,
+            progress_max=5,
+        )
+
+        unpacked = list(result)
+        assert unpacked[0] == summaries
+        assert unpacked[1] == 2
+        assert unpacked[2] == 5
+
+    def test_repr_format(self) -> None:
+        """Should have readable string representation."""
+        result = ProjectMapperResult(
+            module_summaries={Path("/a"): "a", Path("/b"): "b"},
+            progress=3,
+            progress_max=5,
+        )
+
+        repr_str = repr(result)
+        assert "modules=2" in repr_str
+        assert "progress=3/5" in repr_str
+        assert "60.0%" in repr_str
+
+
+class TestProjectMapperScanGenerator:
+    """Tests for scan() as a generator returning TaskResult."""
+
+    def test_scan_returns_generator(self, tmp_path: Path) -> None:
+        """Scan should return a generator."""
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        result = mapper.scan()
+
+        # Should be a generator
+        import types
+        assert isinstance(result, types.GeneratorType)
+
+    def test_scan_yields_taskresult(self, tmp_path: Path) -> None:
+        """Scan should yield TaskResult objects."""
+        from code_monkey.utils.task_result import TaskResult
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        # Create a file so there's something to process
+        (tmp_path / "main.py").write_text("x = 1")
+
+        # Mock the summarizer to return mock summaries
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.scan())
+
+        # Should have multiple TaskResult yields
+        assert len(results) >= 1
+        for r in results:
+            assert isinstance(r, TaskResult)
+
+    def test_scan_final_result_has_summaries(self, tmp_path: Path) -> None:
+        """Final TaskResult should contain module summaries."""
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.scan())
+        final_result = results[-1]
+
+        assert isinstance(final_result.result, ProjectMapperResult)
+        assert isinstance(final_result.result.module_summaries, dict)
+
+    def test_scan_progress_increases(self, tmp_path: Path) -> None:
+        """Progress should increase across TaskResult yields."""
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.scan())
+
+        # Progress should monotonically increase
+        progresses = [r.progress for r in results]
+        for i in range(1, len(progresses)):
+            assert progresses[i] >= progresses[i - 1]
+
+    def test_scan_progress_max_constant(self, tmp_path: Path) -> None:
+        """Progress_max should be constant after initial scan."""
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.scan())
+
+        # After the first result (initial scan), all subsequent results should have the same progress_max
+        # The initial scan yields with progress_max=1, then directory processing yields with progress_max=N+2
+        subsequent_maxes = [r.progress_max for r in results[1:]]
+        assert len(set(subsequent_maxes)) == 1
+
+    def test_scan_final_progress_equals_max(self, tmp_path: Path) -> None:
+        """Final progress should equal progress_max."""
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.scan())
+        final_result = results[-1]
+
+        assert final_result.progress == final_result.progress_max
+
+
+class TestProjectMapperUpdateGenerator:
+    """Tests for update() as a generator returning TaskResult."""
+
+    def test_update_returns_generator(self, tmp_path: Path) -> None:
+        """Update should return a generator."""
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        result = mapper.update([tmp_path / "main.py"])
+
+        import types
+        assert isinstance(result, types.GeneratorType)
+
+    def test_update_yields_taskresult(self, tmp_path: Path) -> None:
+        """Update should yield TaskResult objects."""
+        from code_monkey.utils.task_result import TaskResult
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.update([tmp_path / "main.py"]))
+
+        assert len(results) >= 1
+        for r in results:
+            assert isinstance(r, TaskResult)
+
+    def test_update_final_result_has_summaries(self, tmp_path: Path) -> None:
+        """Final TaskResult should contain module summaries."""
+        from unittest.mock import patch, MagicMock
+
+        mock_llm = MagicMock()
+        mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+
+        (tmp_path / "main.py").write_text("x = 1")
+
+        with patch.object(mapper._summarizer, 'summarize_file', return_value="mock summary"):
+            with patch.object(mapper._summarizer, 'summarize_module', return_value="module summary"):
+                with patch.object(mapper._summarizer, 'generate_project_context', return_value="project context"):
+                    results = list(mapper.update([tmp_path / "main.py"]))
+        final_result = results[-1]
+
+        assert isinstance(final_result.result, ProjectMapperResult)
+        assert isinstance(final_result.result.module_summaries, dict)
