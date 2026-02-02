@@ -10,7 +10,7 @@ from code_monkey.agents.project_librarian.models import (
 )
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.agents.project_librarian.utilities import (
+from code_monkey.agents.project_librarian.utils import (
     compute_file_hash,
     discover_python_files,
     parse_python_code,

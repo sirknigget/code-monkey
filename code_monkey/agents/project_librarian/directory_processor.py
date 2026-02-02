@@ -6,7 +6,7 @@ from pathlib import Path
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.models import FileSummary
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.agents.project_librarian.utilities import (
+from code_monkey.agents.project_librarian.utils import (
     discover_python_files,
     parse_python_code,
 )

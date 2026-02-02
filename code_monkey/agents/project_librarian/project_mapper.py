@@ -16,7 +16,7 @@ from code_monkey.agents.project_librarian.directory_processor import (
     DirectoryProcessor,
 )
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.agents.project_librarian.utilities import (
+from code_monkey.agents.project_librarian.utils import (
     compute_file_hash,
     discover_python_files,
 )
