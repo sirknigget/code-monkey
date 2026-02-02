@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-# Path to the crewai_trading_strategy template
-TEMPLATE_ROOT = Path(__file__).parent.parent.parent / "mock_project" / "template" / "crewai_trading_strategy"
+# Path to the crewai_trading_strategy template (relative to project root)
+TEMPLATE_ROOT = Path(__file__).parent.parent.parent.parent / "mock_project" / "template" / "crewai_trading_strategy"
 
 
 @pytest.fixture(scope="session")
-def crewai_template_root() -> Path:
+def crewai_template_root(pytestconfig) -> Path:
     """Return the path to the crewai_trading_strategy template.
 
     This is a session-scoped fixture that provides the template root directory.
