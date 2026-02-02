@@ -1,155 +1,126 @@
 # Architecture
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-02
 
 ## Pattern Overview
 
-**Overall:** Multi-Agent LangGraph Orchestration
+**Overall:** Multi-Agent LangGraph Orchestration with Hierarchical Cache-Based Context
 
 **Key Characteristics:**
-- LangGraph-based agent orchestration with stateful graph workflows
-- Specialized agents with distinct responsibilities (Web Researcher, Project Librarian)
-- Async-first design for I/O-bound operations (web requests, file discovery)
-- Modular utility layer supporting agent operations
-- In-memory checkpointer for state persistence within sessions
+- LangChain/LangGraph-based multi-agent architecture for coding assistance
+- Two specialized agents: Web Researcher (web tasks) and Project Librarian (code analysis)
+- Incremental processing using hash-based change detection and hierarchical caching
+- Generator-based progress tracking for long-running operations
+- Clear separation between agent logic, data models, and utilities
 
 ## Layers
 
-**Entry Layer:**
-- Purpose: Application entry point and initialization
-- Location: `/Users/omergilad/workspace/AI/code-monkey/main.py`
-- Contains: `main()` function, environment loading via dotenv
-- Depends on: No internal modules (bootstrap only)
-- Used by: CLI invocation
+**Agents Layer (`code_monkey/agents/`):**
+- Purpose: Contains specialized LangGraph agents for different tasks
+- Location: `code_monkey/agents/`
+- Contains: Agent implementations, tools, and agent-specific utilities
+- Depends on: Models layer (data structures), Utils layer (common utilities)
+- Used by: Entry point and external callers
 
-**Models Layer:**
-- Purpose: LLM model configuration and instantiation
-- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/models/models.py`
-- Contains: Model factory functions (`get_openai_model`, `get_minimax_model`)
-- Depends on: langchain-openai, langchain-anthropic
-- Used by: Agent initialization
+**Models Layer (`code_monkey/models/`):**
+- Purpose: Defines data models and LLM factory functions
+- Location: `code_monkey/models/models.py`
+- Contains: Pydantic BaseModels, LangChain model factory functions
+- Depends on: External LLM libraries (langchain-openai, langchain-anthropic)
+- Used by: Agents layer for LLM instances
 
-**Agents Layer:**
-- Purpose: Specialized autonomous agents with tool access
-- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/`
-- Contains:
-  - `web_researcher/`: WebResearcher agent with Playwright + Google search tools
-  - `project_librarian/`: Project analysis utilities (file discovery, hash computation, code parsing)
-- Depends on: Models layer, Tools layer, Utilities layer
-- Used by: Entry layer (future orchestration)
-
-**Tools Layer:**
-- Purpose: Reusable tool implementations for agents
-- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/tools.py`
-- Contains: PlaywrightTools class, google_search_tool function
-- Depends on: playwright, langchain-community, serper-api
-- Used by: WebResearcher agent
-
-**Utilities Layer:**
-- Purpose: Shared helper functions and utilities
-- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/utils/`
-- Contains:
-  - `langchain_utils.py`: LangChain helper functions
-  - `json_utils.py`: JSON serialization utilities
-- Depends on: Standard library only (where possible)
+**Utils Layer (`code_monkey/utils/`):**
+- Purpose: Shared utilities across all agents
+- Location: `code_monkey/utils/`
+- Contains: TaskResult generic container, JSON utilities, LangChain helpers
+- Depends on: Standard library only (minimized dependencies)
 - Used by: All layers
-
-**Project Librarian Utilities:**
-- Purpose: File system and code analysis operations
-- Location: `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/`
-- Contains:
-  - `file_discovery.py`: Python file discovery with exclusions
-  - `hash_utils.py`: SHA-256 file hashing for change detection
-  - `code_parser.py`: AST-based code structure extraction
-- Depends on: pathlib, hashlib, ast
-- Used by: Project Librarian agent, integration tests
 
 ## Data Flow
 
+**Project Mapping Flow:**
+
+1. `ProjectMapper.scan()` is called with project root path
+2. `_compute_file_hashes()` discovers Python files and computes SHA-256 hashes
+3. `CacheManager.load_hashes()` loads cached hashes from `.codemonkey/file_hashes.json`
+4. Changed files are detected via hash comparison
+5. `DirectoryProcessor.process_changed_directories()` processes changed directories top-down
+6. Each directory:
+   - `discover_python_files()` finds Python files in directory
+   - `parse_python_code()` extracts AST structure (classes, functions, imports)
+   - `Summarizer.summarize_file()` generates LLM-based file summary
+   - `Summarizer.summarize_module()` generates module-level summary with parent context
+   - Cache saves file/module summaries to `.codemonkey/code_context/`
+7. `Summarizer.generate_project_context()` creates project-wide context
+8. `ProjectMapperResult` yielded with progress tracking via `TaskResult`
+
 **Web Research Flow:**
 
-1. User invokes application with query
-2. Entry layer initializes models via models.py
-3. WebResearcher agent is created with PlaywrightTools
-4. Query is passed to agent with thread_id for session tracking
-5. Agent uses tools (Google search, Playwright browsing) to gather information
-6. Response is extracted from agent state via last_message_content()
-7. Result returned with thread_id for potential continuation
-
-**Project Analysis Flow:**
-
-1. Project Librarian receives project root path
-2. File discovery scans for Python files (excluding venv, node_modules, .git)
-3. For each file:
-   - Hash computed for change detection
-   - Code parsed via AST to extract classes, functions, imports
-4. Aggregated results returned as structured data
+1. `WebResearcher.create()` initializes Playwright browser and LangChain agent
+2. `WebResearcher.search()` invokes agent with query
+3. Agent uses `google_search_tool` and Playwright tools
+4. `SearchResult` returned with result and thread_id for session continuity
 
 **State Management:**
-- LangGraph InMemorySaver checkpointer for agent state persistence
-- Thread-based session isolation via configurable thread_id
-- No persistent storage between sessions (in-memory only)
+- Generator functions yield `TaskResult[T]` with `progress` and `progress_max` for progress tracking
+- Cached state stored in `.codemonkey/` directory hierarchy
+- Agent state persisted via LangGraph checkpointer (InMemorySaver for Web Researcher)
 
 ## Key Abstractions
 
-**Agent Abstraction:**
-- Purpose: Encapsulates LLM agent with tools and state
-- Examples:
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py` (WebResearcher class)
-- Pattern: Factory method (create) + async instance methods (search, teardown)
+**TaskResult[T] (`code_monkey/utils/task_result.py`):**
+- Purpose: Generic container for task results with progress tracking
+- Examples: `TaskResult[ProjectMapperResult]`, `TaskResult[dict]`
+- Pattern: Generic dataclass with `result`, `progress`, `progress_max` properties
 
-**Tool Abstraction:**
-- Purpose: Provides reusable capabilities to agents
-- Examples:
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/tools.py` (PlaywrightTools, google_search_tool)
-- Pattern: Class-based lifecycle management + decorated functions
+**CacheManager (`code_monkey/agents/project_librarian/cache_manager.py`):**
+- Purpose: Atomic cache reads/writes for project mapping data
+- Cache structure:
+  - `.codemonkey/file_hashes.json` - file hash cache
+  - `.codemonkey/code_context/{rel_path}.md` - per-file summaries
+  - `.codemonkey/project_context.json` - project-wide context
+- Pattern: Temp file + rename for atomic writes
 
-**Utility Abstraction:**
-- Purpose: Stateless helper functions for common operations
-- Examples:
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/file_discovery.py`
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/hash_utils.py`
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/code_parser.py`
-- Pattern: Pure functions with typed signatures, NamedTuple for result structures
+**Summarizer (`code_monkey/agents/project_librarian/summarizer.py`):**
+- Purpose: LLM-based file, module, and project summarization
+- Pattern: LangChain RunnableSequence with exponential backoff retry
+- Three chain types: file, module, project summarization
 
-**Data Model Abstraction:**
-- Purpose: Structured response types with validation
-- Examples:
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py` (SearchResult)
-  - `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/code_parser.py` (ParsedCode)
-- Pattern: Pydantic BaseModel and typing.NamedTuple
+**Code Parser (`code_monkey/agents/project_librarian/utils/code_parser.py`):**
+- Purpose: AST-based code structure extraction
+- Pattern: Visitor pattern using Python ast module
+- Extracts: classes, functions, methods, imports in LLM-friendly format
 
 ## Entry Points
 
-**main():**
-- Location: `/Users/omergilad/workspace/AI/code-monkey/main.py`
+**main.py (`code_monkey/main.py`):**
+- Location: `code_monkey/main.py`
 - Triggers: `python main.py` or `uv run python main.py`
-- Responsibilities: Environment loading, application bootstrap (currently stub)
+- Responsibilities: Initializes logging, loads .env, calls `main()`
 
-**Test Suite:**
-- Location: `/Users/omergilad/workspace/AI/code-monkey/tests/`
-- Triggers: `pytest` or `uv run pytest`
-- Responsibilities: Unit and integration tests for agents and utilities
+**Test Configuration (`tests/conftest.py`):**
+- Location: `tests/conftest.py`
+- Provides fixtures for template-based testing
+- Creates isolated working copies of mock projects
 
 ## Error Handling
 
-**Strategy:** Try-except with graceful degradation
+**Strategy:** Exponential backoff with retries
 
 **Patterns:**
-- Syntax errors in code parsing return empty ParsedCode (no exception propagation)
-- File read errors propagate as OSError
-- Agent errors via LangChain exception handling
+- `Summarizer._summarize_with_retry()`: Retries up to MAX_RETRIES (3) with exponential backoff
+- `CacheManager`: Returns empty/default values on cache read failures
+- `parse_python_code()`: Returns empty `ParsedCode` on syntax errors
+- Logging via Python standard `logging` module
 
 ## Cross-Cutting Concerns
 
-**Logging:** Print statements only (no structured logging framework)
+**Logging:** Python standard `logging` with basic configuration in `main.py`
 
-**Validation:** Pydantic BaseModel for response types, typed signatures throughout
+**Validation:** Pydantic BaseModel for structured data (e.g., `SearchResult`)
 
-**Authentication:** Environment variables via dotenv for API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, SERPER_API_KEY)
-
-**Async Operations:** Async/await pattern for I/O-bound work (Playwright, file operations)
+**Authentication:** Environment variables loaded via `dotenv` for API keys
 
 ---
 
-*Architecture analysis: 2026-01-31*
+*Architecture analysis: 2026-02-02*

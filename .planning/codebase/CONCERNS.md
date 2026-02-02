@@ -1,84 +1,181 @@
-# Codebase Concerns
+# Technical Concerns
+
+**Analysis Date:** 2026-02-02
+
+## Critical Issues
+
 
 ## Technical Debt
 
-### Incomplete Implementation
-- **Main entry point is stub**: `main.py` only prints "Hello from code-monkey!" - the multi-agent orchestration is not wired up
-- **Project Librarian agent incomplete**: Only utilities exist (`file_discovery.py`, `code_parser.py`, `hash_utils.py`), no actual agent implementation
-- **Lead Developer agent missing**: No implementation exists despite being planned
-- **Cache infrastructure not implemented**: `.codemonkey/` directories for file-hashes, code-context, and project-context are planned but not created
+### 2. main.py is Minimal/Unused
 
-### API Concerns
-- **`create_agent` import may be incorrect**: `web_researcher.py` imports from `langchain.agents import create_agent` - this function may not exist in recent langchain versions (typically `create_react_agent` or similar)
-- **Message attribute access**: `langchain_utils.py` uses `.text` attribute on messages; should be `.content` for LangChain messages
+**Severity:** MEDIUM
 
-### Code Quality
-- **Minimal error handling**: Most functions have no try/catch blocks (except `code_parser.py`)
-- **No logging**: Project has no logging infrastructure
-- **Generic type hints missing**: `json_utils.py` uses `object` parameter without type hints
-- **Inconsistent async patterns**: Mix of sync/async without clear conventions
+**Issue:** `main.py` is very minimal and doesn't implement the agent architecture described in `notes.md`. It appears to be a placeholder.
 
-## Known Issues
+**Evidence:**
 
-### API/Integration Risks
-- **GoogleSerperAPIWrapper dependency**: Requires `SERPER_API_KEY` environment variable - no validation or fallback
-- **MiniMax model config**: Custom Anthropic API endpoint (`api.minimax.io`) - non-standard integration that may break
-- **Playwright browser management**: No connection pooling or resource limits for browser instances
+- `main.py` only initializes logging and loads `.env`
+- No actual agent initialization or execution
+- The architecture describes three agents but only two are partially implemented
 
-### Test Gaps
-- **Integration tests hit real APIs**: `test_web_researcher.py` makes real API calls to MiniMax and Serper - expensive and flaky
-- **No mocking infrastructure**: Tests don't mock external services
-- **Missing unit tests for edge cases**: Code parser doesn't test malformed files beyond syntax errors
+**Impact:** The application cannot actually perform its intended tasks through the main entry point.
 
-## Security Concerns
+**Remediation:** Complete `main.py` to initialize and run the Lead Developer agent, or clarify the intended entry point.
 
-### Environment Variables
-- `.env` file exists in project root (454 bytes) - not checked into git but presence suggests secrets exist locally
-- No `.env.example` template for developers
-- API keys required: `SERPER_API_KEY`, `ANTHROPIC_API_KEY`/`MINIMAX_API_KEY`, potentially `OPENAI_API_KEY`
+### 3. Missing Lead Developer Agent
 
-### Input Validation
-- **No sanitization on search queries**: User input passed directly to Google search and Playwright
-- **File path handling**: `hash_utils.py` accepts arbitrary paths without validation - potential path traversal
-- **No rate limiting**: Unbounded API calls could lead to cost issues or abuse
+**Severity:** MEDIUM
 
-### Browser Security
-- Playwright runs browser instances - potential for XSS if navigating to malicious URLs
-- No sandboxing configuration for browser
+**Issue:** `notes.md` describes a three-agent architecture (Web Researcher, Project Librarian, Lead Developer), but only the first two are partially implemented.
 
-## Performance Concerns
+**Impact:** The core coding assistance functionality is incomplete.
 
-### Resource Management
-- **Playwright lifecycle**: Browser instance created per `WebResearcher` - no pooling or reuse
-- **InMemorySaver for checkpoints**: Won't scale - checkpoints lost on restart
-- **File globbing**: `discover_python_files` scans entire directory tree - could be slow on large repos
+**Remediation:** Implement the Lead Developer agent as described in `notes.md`.
 
-### Scalability Issues
-- No async batching for file hash computation
-- No caching layer for parsed code structures
-- No pagination for search results or file discovery
+### 4. Deprecated LangChain API Usage
+
+**Severity:** MEDIUM
+
+**Issue:** `web_researcher.py` uses deprecated `create_agent` from LangChain.
+
+**Evidence:**
+
+- `from langchain.agents import create_openai_functions_agent` (deprecated pattern)
+
+**Impact:** Code may break with future LangChain updates.
+
+**Remediation:** Update to use LangGraph's agent patterns or current LangChain agent APIs.
+
+---
+
+## Code Quality Issues
+
+### 5. Duplicate Import in directory_processor.py
+
+**Severity:** LOW
+
+**Issue:** `TaskResult` is imported twice from different paths.
+
+**Evidence:**
+
+```python
+from code_monkey.utils.task_result import TaskResult  # Line 17
+from code_monkey.utils import task_result as tr  # Line 21
+```
+
+**Remediation:** Remove duplicate import, use consistent import style.
+
+### 6. Bug in generate_project_context
+
+**Severity:** LOW
+
+**Issue:** The code attempts `dir_path.root` which doesn't work correctly for Path objects.
+
+**Location:** `code_monkey/agents/project_librarian/summarizer.py`
+
+**Remediation:** Use `dir_path.parent` or refactor the logic.
+
+### 7. Inconsistent Path Handling
+
+**Severity:** LOW
+
+**Issue:** Hash comparison in `project_mapper.py` uses string path comparison which could be inconsistent across platforms.
+
+**Remediation:** Use `Path` objects consistently for all path operations.
+
+---
+
+## Missing Tests
+
+### 8. No Tests for main.py
+
+**Severity:** MEDIUM
+
+**Impact:** Entry point functionality is untested.
+
+### 9. No Tests for models.py
+
+**Severity:** LOW
+
+**Impact:** Model factory functions are untested.
+
+### 10. No Integration Tests for Complete Workflow
+
+**Severity:** MEDIUM
+
+**Impact:** End-to-end workflow from user request to code generation is untested.
+
+---
 
 ## Fragile Areas
 
-### Tightly Coupled Components
-- `WebResearcher.create()` factory couples Playwright lifecycle with agent creation
-- Tool definitions inline with agent setup - hard to test independently
+### 11. Complex Progress Tracking Logic
 
-### Missing Defensive Code
-- `last_message_content()` assumes messages exist and have `.text` - will crash on empty state
-- `compute_file_hash()` will raise raw `OSError` on missing files
-- No graceful degradation if external services unavailable
+**Severity:** MEDIUM
 
-### Configuration
-- Hardcoded values: `NUM_GOOGLE_RESULTS = 10`, headless defaults
-- No config file or environment-based configuration system
-- Model selection (`get_minimax_model`, `get_openai_model`) hardcoded
+**Issue:** Progress tracking in `project_mapper.py` has complex logic with multiple edge cases.
 
-## Recommended Priorities
+**Patterns to watch:**
 
-1. **Critical**: Fix `create_agent` import and `.text` vs `.content` issues
-2. **High**: Add environment variable validation on startup
-3. **High**: Implement missing agents (Project Librarian, Lead Developer)
-4. **Medium**: Add proper error handling and logging
-5. **Medium**: Create mock infrastructure for tests
-6. **Low**: Add configuration management system
+- Initial scan yielding with `progress_max=1`
+- Subsequent yields with `progress_max=N+2`
+- Progress must monotonically increase
+
+**Remediation:** Add more explicit tests for edge cases.
+
+### 12. Cache Invalidation Complexity
+
+**Severity:** MEDIUM
+
+**Issue:** Hash-based change detection could miss certain types of changes:
+
+- File renames (old path hash remains in cache)
+- Directory structure changes affecting imports
+- Changes to files outside the project root
+
+**Remediation:** Consider adding a manifest file that tracks all tracked files.
+
+### 13. ThreadPoolExecutor Resource Management
+
+**Severity:** LOW
+
+**Issue:** Summarizer uses `ThreadPoolExecutor` without explicit bounds or context manager in some methods.
+
+**Remediation:** Ensure consistent use of context managers for resource safety.
+
+---
+
+## Performance Concerns
+
+### 14. No Rate Limiting for LLM Calls
+
+**Severity:** LOW
+
+**Issue:** Multiple concurrent LLM calls could trigger rate limits.
+
+**Remediation:** Add rate limiting or batching for LLM API calls.
+
+### 15. Cache Growth Unbounded
+
+**Severity:** LOW
+
+**Issue:** `.codemonkey/code_context/` cache grows with project size but has no cleanup mechanism.
+
+**Remediation:** Consider adding cache size limits or TTL-based expiration.
+
+---
+
+## Documentation Issues
+
+### 16. notes.md Out of Sync
+
+**Severity:** MEDIUM
+
+**Issue:** `notes.md` describes an architecture that doesn't match the current implementation.
+
+**Remediation:** Either update `notes.md` to match implementation or complete the implementation to match the design.
+
+---
+
+*Concern analysis: 2026-02-02*

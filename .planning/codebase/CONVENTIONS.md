@@ -1,169 +1,254 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-02
+
+## Language
+
+**Primary:** Python 3.12+
 
 ## Naming Patterns
 
 **Files:**
-- Snake_case: `file_discovery.py`, `hash_utils.py`
-- Descriptive names reflecting functionality
+- snake_case for all Python files (e.g., `cache_manager.py`, `task_result.py`)
+- Single-purpose modules with descriptive names
+
+**Classes:**
+- PascalCase for class names (e.g., `ProjectMapper`, `CacheManager`, `Summarizer`)
+- Suffix with descriptive type when applicable (e.g., `ProjectMapperResult`, `FileSummary`)
 
 **Functions:**
-- Snake_case: `discover_python_files()`, `compute_file_hash()`, `parse_python_code()`
-- Verb-noun pattern for action functions: `discover_*`, `compute_*`, `parse_*`, `dump_*`
-- Prefix `_` for private/internal methods: `_playwright`, `_browser`, `_tools`
+- snake_case for function names (e.g., `compute_file_hash`, `discover_python_files`)
+- Descriptive, verb-based names that indicate action
 
 **Variables:**
-- Snake_case: `root`, `pattern`, `exclude_dirs`, `all_files`
-- Underscore suffix to avoid shadowing builtins: `class_` (if needed)
-- Constants: UPPER_SCREAMING_CASE for true constants
+- snake_case for local variables (e.g., `module_summaries`, `current_hash`)
+- Single-letter variables only for trivial loops (`f`, `p`)
 
-**Types:**
-- PascalCase for classes: `ParsedCode`, `CodeExtractor`, `SearchResult`, `PlaywrightTools`
-- NamedTuple for simple data structures: `ParsedCode`
-- BaseModel for Pydantic models: `SearchResult`
+**Constants:**
+- SCREAMING_SNAKE_CASE for constants (e.g., `EXCLUDED_DIRS`, `MAX_RETRIES`, `HASHES_FILENAME`)
 
-## Code Style
+**Private Members:**
+- Leading underscore for private attributes/methods (e.g., `_summarizer`, `_ensure_cache_dir`)
 
-**Formatting:**
-- No explicit formatter configured (pyproject.toml shows minimal config)
-- Follows PEP 8 conventions (4 spaces indentation, line length ~88 typical)
+## Type Hints
 
-**Linting:**
-- No explicit linter configured
-- Python 3.12+ required with strict typing
+**Style:** Python 3.12+ native syntax with built-in generics
 
-**Type Hints:**
-- Used throughout codebase
-- Union types with `|` operator: `Path | str`
-- Generics: `list[Path]`, `Iterator[Path]`, `frozenset[str]`
-- Optional types: `str = None` for nullable parameters
-
-## Import Organization
-
-**Standard Library First:**
+**Examples from codebase:**
 ```python
+def __init__(self, root: Path, llm: BaseChatModel) -> None:
+    ...
+
+def scan(self) -> Generator[TaskResult[ProjectMapperResult], Any, None]:
+    ...
+
+module_summaries: dict[Path, str] = {}
+```
+
+**Union Types:** Use `|` operator (Python 3.10+) instead of `Union[]`:
+```python
+cache_dir: Path | None = None
+summary: str | None = None
+```
+
+## Code Structure
+
+**Imports:**
+1. Standard library imports
+2. Third-party imports
+3. Relative imports (grouped by depth)
+
+```python
+import logging
 from pathlib import Path
-from typing import Iterator, NamedTuple
-import hashlib
-import ast
+from typing import Any, Generator
+from langchain_core.messages import HumanMessage
+from code_monkey.agents.project_librarian.cache_manager import CacheManager
 ```
 
-**Third-Party Imports:**
+**Relative Imports:** Use explicit relative imports with leading dots:
 ```python
-from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
-from langchain_community.utilities import GoogleSerperAPIWrapper
-from langchain_core.tools import tool
-from playwright.async_api import async_playwright
-```
-
-**Local Application Imports:**
-```python
-from code_monkey.agents.project_librarian.utilities.file_discovery import (
+from code_monkey.agents.project_librarian.utils import (
+    compute_file_hash,
     discover_python_files,
 )
-from code_monkey.utils.langchain_utils import last_message_content
 ```
 
-**Path Aliases:**
-- No path aliases configured
-- Use relative imports within modules where appropriate
+**Module Structure:**
+- Docstring at module top describing purpose
+- Classes first, then functions
+- `__all__` export list at bottom
+
+## Class Design
+
+**Base Classes:**
+- Use `@dataclass` decorator for simple data containers
+- Use `NamedTuple` for simple immutable records
+- Inherit from `BaseModel` for Pydantic models (LangChain integration)
+
+**Examples:**
+```python
+@dataclass
+class TaskResult(Generic[T]):
+    """Generic container for task result with progress tracking."""
+    result: T
+    progress: int
+    progress_max: int
+
+class CodeNode(NamedTuple):
+    """Represents a node in the code structure tree."""
+    name: str
+    type: str
+    children: list["CodeNode"] = []
+```
+
+**Properties:**
+- Use `@property` decorator for computed attributes
+- Keep side effects out of properties
+
+**Private Members:**
+- Prefix with single underscore: `_cache`, `_summarizer`
+- No dunder (`__`) unless required by protocol
+
+## Function Design
+
+**Return Types:** Always specify return type annotations
+
+**Docstrings:** Google-style docstrings for all public functions
+
+```python
+def compute_file_hash(filepath: Path | str) -> str:
+    """Compute SHA-256 hash of a file for change detection.
+
+    Args:
+        filepath: Path to the file (Path object or string)
+
+    Returns:
+        Hexadecimal digest of the file's SHA-256 hash
+
+    Raises:
+        OSError: If the file cannot be read
+    """
+```
+
+**Generator Functions:** Use `Generator` type for functions that yield:
+```python
+def scan(self) -> Generator[TaskResult[ProjectMapperResult], Any, None]:
+    """Perform a full project scan.
+
+    Yields:
+        TaskResult containing ProjectMapperResult with progress tracking.
+    """
+```
 
 ## Error Handling
 
-**Pattern: Try-Except with Cleanup:**
+**Exceptions:**
+- Use specific exception types
+- Document exceptions in docstrings
+- Catch only what you can handle
+
+**Example:**
 ```python
-def compute_file_hash(filepath: Path | str) -> str:
-    try:
-        path = Path(filepath)
-        with open(path, "rb") as f:
-            digest = hashlib.file_digest(f, "sha256")
-        return digest.hexdigest()
-    except OSError:
-        # Re-raise or handle
-        raise
+try:
+    with open(hashes_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+except (json.JSONDecodeError, OSError):
+    return {}
 ```
 
-**Exception Propagation:**
-- Errors propagate to caller (OSError from file operations)
-- Syntax errors caught and return empty result: `except SyntaxError: return ParsedCode(...)`
-
-**Assertions:**
-- Used for invariants in tests: `assert len(result) == 2`
-- Not used for runtime error handling in production code
+**Retry Logic:**
+- Exponential backoff for external operations (see `Summarizer._summarize_with_retry`)
+- Max retries constant defined as class attribute
 
 ## Logging
 
-**Framework:** `print()` statements or `None`
+**Framework:** Python standard library `logging`
 
-**Patterns:**
-- No structured logging framework detected
-- Simple print for output in tools: `print(f"\n=== Google Search Results for '{query}' ===\n")`
+**Setup:**
+```python
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+```
+
+**Usage:**
+- Use `logger.info()`, `logger.error()`, `logger.debug()` appropriately
+- Format messages as sentences (no leading capital in message)
+
+## File Operations
+
+**Path Handling:**
+- Use `pathlib.Path` for all path operations
+- Avoid string concatenation for paths
+- Use `encoding="utf-8"` for text file operations
+
+**Atomic Writes:**
+- Use temp file + rename pattern for cache writes:
+```python
+with tempfile.NamedTemporaryFile(
+    mode="w", suffix=".json", dir=self.cache_dir, delete=False
+) as tmp:
+    json.dump(hashes, tmp, indent=2)
+    tmp_path = tmp.name
+Path(tmp_path).rename(hashes_file)
+```
 
 ## Comments
 
 **When to Comment:**
-- Explain complex logic or non-obvious behavior
-- Document module purpose at top of file
+- Complex algorithms or non-obvious logic
+- TODO items (use `# TODO:` format)
+- Why-not-what (code shows what, comment explains why)
 
-**JSDoc/TSDoc:**
-- Python docstrings following Google style:
+**Inline Comments:**
+- Avoid obvious comments
+- Use sparingly, prefer self-documenting code
+- Short, imperative style
+
+## Async/Await
+
+**Pattern:** Use `async def` for async operations
+
 ```python
-def discover_python_files(
-    root: Path,
-    pattern: str = "**/*.py",
-    exclude_dirs: frozenset[str] = EXCLUDED_DIRS,
-) -> list[Path]:
-    """Discover Python files matching pattern, excluding specified directories.
-
-    Args:
-        root: The root directory to search from.
-        pattern: Glob pattern to match files (default: "**/*.py").
-        exclude_dirs: Frozenset of directory names to exclude.
-
-    Returns:
-        A sorted list of Path objects for matching Python files.
-    """
+async def create(cls, model, headless: bool = True):
+    """Async factory method."""
+    playwright_tools = await PlaywrightTools.initialize(headless=headless)
+    ...
 ```
 
-**Module-Level Docstrings:**
+**Await Pattern:** Pass config via `RunnableConfig` for LangGraph:
 ```python
-"""File discovery utilities for the Project Librarian agent."""
-"""Hash computation utilities for file change detection."""
+response = await self._agent.ainvoke(
+    {"messages": messages},
+    config=RunnableConfig(configurable={"thread_id": thread_id})
+)
 ```
 
-## Function Design
+## Concurrency
 
-**Size:** Functions are focused and single-purpose (10-50 lines typical)
+**ThreadPoolExecutor:** For parallel I/O-bound operations
 
-**Parameters:**
-- Default values for optional parameters
-- Type hints required
-- Named parameters for clarity
-
-**Return Values:**
-- Explicit return types in type hints
-- Empty collections instead of null where appropriate
-- NamedTuple for structured returns
-
-## Module Design
-
-**Exports:**
-- Explicit `__all__` in utility modules:
 ```python
-__all__ = ["discover_python_files", "parse_python_code", "compute_file_hash"]
+with ThreadPoolExecutor() as executor:
+    file_summaries = list(executor.map(self._summarize_single_file, files))
 ```
 
-**Barrel Files:**
-- `utilities/__init__.py` re-exports public functions
-- Single-line imports for public API
+## String Formatting
 
-**Class Design:**
-- Minimal classes, prefer functions where possible
-- NamedTuple for simple data containers
-- BaseModel for Pydantic models with validation
-- Class methods for alternative constructors: `PlaywrightTools.initialize()`
+**Style:** f-strings for all variable interpolation
+
+```python
+return f"ProjectMapperResult(modules={len(self.module_summaries)})"
+```
+
+## Deprecation Pattern
+
+Not currently used in codebase, but pattern established in similar projects:
+```python
+import warnings
+warnings.warn("Function name is deprecated", DeprecationWarning, stacklevel=2)
+```
 
 ---
 
-*Convention analysis: 2026-01-31*
+*Convention analysis: 2026-02-02*

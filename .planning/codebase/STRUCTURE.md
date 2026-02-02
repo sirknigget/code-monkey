@@ -1,165 +1,170 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-02
 
 ## Directory Layout
 
 ```
 code-monkey/
-├── code_monkey/              # Main source code
-│   ├── agents/               # Agent implementations
-│   │   ├── web_researcher/   # Web research agent
-│   │   └── project_librarian/ # Project analysis agent
-│   │       └── utilities/    # File system utilities
-│   ├── models/               # LLM model configuration
-│   ├── utils/                # Shared utilities
-│   └── main.py               # Entry point
-├── tests/                    # Test suite
-│   └── agents/               # Agent tests (mirrors source structure)
-│       ├── web_researcher/
-│       └── project_librarian/
-├── .planning/codebase/       # Architecture documentation
-├── pyproject.toml            # Project configuration
-├── .env                      # Environment variables
-└── uv.lock                   # Dependency lockfile
+├── code_monkey/               # Main application source
+│   ├── main.py                # Entry point
+│   ├── agents/                # Agent implementations
+│   │   ├── project_librarian/ # Project analysis agent
+│   │   │   ├── project_mapper.py
+│   │   │   ├── directory_processor.py
+│   │   │   ├── cache_manager.py
+│   │   │   ├── summarizer.py
+│   │   │   ├── models.py
+│   │   │   ├── __init__.py
+│   │   │   └── utils/         # Agent-specific utilities
+│   │   │       ├── __init__.py
+│   │   │       ├── code_parser.py
+│   │   │       ├── file_discovery.py
+│   │   │       └── hash_utils.py
+│   │   └── web_researcher/    # Web research agent
+│   │       ├── web_researcher.py
+│   │       └── tools.py
+│   ├── models/
+│   │   └── models.py          # LLM factories, data models
+│   └── utils/
+│       ├── __init__.py
+│       ├── task_result.py
+│       ├── json_utils.py
+│       └── langchain_utils.py
+├── tests/                     # Test suite
+│   ├── conftest.py
+│   ├── testing_utils.py
+│   └── agents/
+│       ├── project_librarian/
+│       │   └── test_*.py
+│       │   └── utils/
+│       │       └── test_*.py
+│       └── web_researcher/
+│           └── test_*.py
+├── mock_project/              # Test fixtures
+│   └── template/
+├── .planning/codebase/        # Generated documentation
+├── pyproject.toml
+└── CLAUDE.md
 ```
 
 ## Directory Purposes
 
-**`code_monkey/`:**
-- Purpose: Main source code package
-- Contains: All application code
+**code_monkey/ (`code_monkey/`):**
+- Purpose: Main application source code
+- Contains: All Python modules and packages
 - Key files: `main.py` (entry point)
 
-**`code_monkey/agents/`:**
-- Purpose: Agent implementations
-- Contains: Specialized agents with tools
-- Key files:
-  - `web_researcher/web_researcher.py` (WebResearcher agent)
-  - `web_researcher/tools.py` (Playwright + Google search tools)
+**code_monkey/agents/ (`code_monkey/agents/`):**
+- Purpose: Agent implementations following LangGraph patterns
+- Contains: Agent classes, tools, and agent-specific logic
+- Key files: `project_mapper.py`, `web_researcher.py`, `tools.py`
 
-**`code_monkey/agents/project_librarian/utilities/`:**
-- Purpose: File system and code analysis utilities
-- Contains:
-  - `file_discovery.py` (Python file discovery)
-  - `hash_utils.py` (SHA-256 hashing)
-  - `code_parser.py` (AST code extraction)
-  - `__init__.py` (barrel exports)
+**code_monkey/agents/project_librarian/ (`code_monkey/agents/project_librarian/`):**
+- Purpose: Project analysis agent with caching and summarization
+- Contains: ProjectMapper, DirectoryProcessor, CacheManager, Summarizer
+- Key files: `project_mapper.py`, `directory_processor.py`, `cache_manager.py`, `summarizer.py`
 
-**`code_monkey/models/`:**
-- Purpose: LLM model factory functions
-- Contains: `models.py` (get_openai_model, get_minimax_model)
+**code_monkey/agents/project_librarian/utils/ (`code_monkey/agents/project_librarian/utils/`):**
+- Purpose: Utilities specific to project librarian
+- Contains: Code parsing, file discovery, hash computation
+- Key files: `code_parser.py`, `file_discovery.py`, `hash_utils.py`
 
-**`code_monkey/utils/`:**
-- Purpose: Shared utility functions
-- Contains:
-  - `langchain_utils.py` (LangChain helpers)
-  - `json_utils.py` (JSON serialization)
+**code_monkey/agents/web_researcher/ (`code_monkey/agents/web_researcher/`):**
+- Purpose: Web research agent with Playwright integration
+- Contains: WebResearcher class, web tools
+- Key files: `web_researcher.py`, `tools.py`
 
-**`tests/`:**
-- Purpose: Test suite
-- Contains: Unit and integration tests
-- Structure: Mirrors agent directory structure
+**code_monkey/models/ (`code_monkey/models/`):**
+- Purpose: Data models and LLM factory functions
+- Contains: Model definitions, ChatOpenAI/ChatAnthropic factories
+- Key files: `models.py`
 
-**`.planning/codebase/`:**
-- Purpose: Architecture and convention documentation
-- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, etc.
+**code_monkey/utils/ (`code_monkey/utils/`):**
+- Purpose: Shared utilities across all agents
+- Contains: TaskResult, JSON helpers, LangChain helpers
+- Key files: `task_result.py`, `json_utils.py`, `langchain_utils.py`
+
+**tests/ (`tests/`):**
+- Purpose: Test suite with pytest
+- Contains: Unit tests, integration tests, fixtures
+- Structure mirrors source structure under `agents/`
 
 ## Key File Locations
 
 **Entry Points:**
-- `/Users/omergilad/workspace/AI/code-monkey/main.py`: Application bootstrap, loads .env
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/main.py`: Application entry point
 
 **Configuration:**
-- `/Users/omergilad/workspace/AI/code-monkey/pyproject.toml`: Project metadata, dependencies, pytest config
+- `/Users/omergilad/workspace/AI/code-monkey/pyproject.toml`: Project configuration, dependencies, pytest settings
 
 **Core Logic:**
-- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py`: WebResearcher agent
-- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/utilities/`: Project analysis utilities
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/project_mapper.py`: Main project mapping orchestrator
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/directory_processor.py`: Directory traversal and processing
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/project_librarian/cache_manager.py`: Cache management
+- `/Users/omergilad/workspace/AI/code-monkey/code_monkey/agents/web_researcher/web_researcher.py`: Web research agent
 
 **Testing:**
-- `/Users/omergilad/workspace/AI/code-monkey/tests/agents/project_librarian/`: Project Librarian tests
-- `/Users/omergilad/workspace/AI/code-monkey/tests/agents/web_researcher/`: Web Researcher tests
+- `/Users/omergilad/workspace/AI/code-monkey/tests/conftest.py`: Pytest fixtures
+- `/Users/omergilad/workspace/AI/code-monkey/tests/agents/project_librarian/test_project_mapper.py`: Project mapper tests
 
 ## Naming Conventions
 
 **Files:**
-- snake_case.py: All Python files use lowercase with underscores
-- Example: `file_discovery.py`, `hash_utils.py`, `langchain_utils.py`
+- Python modules: `lowercase_snake_case.py` (e.g., `cache_manager.py`, `hash_utils.py`)
+- Test files: `test_<module_name>.py` (e.g., `test_project_mapper.py`)
+- Utility modules: `lowercase_snake_case.py` (e.g., `code_parser.py`)
 
 **Directories:**
-- snake_case: All directories use lowercase with underscores
-- Example: `code_monkey`, `web_researcher`, `project_librarian`
+- Package directories: `lowercase_snake_case` (e.g., `project_librarian`, `web_researcher`)
+- Test subdirectories mirror source: `tests/agents/<agent_name>/`
 
 **Classes:**
-- PascalCase: All classes use capitalized words
-- Example: `WebResearcher`, `PlaywrightTools`, `SearchResult`, `CodeExtractor`
+- PascalCase: `ProjectMapper`, `CacheManager`, `Summarizer`, `WebResearcher`
+- NamedTuple models: PascalCase ending in Summary (e.g., `FileSummary`, `ModuleSummary`)
 
 **Functions:**
-- snake_case: All functions use lowercase with underscores
-- Example: `discover_python_files`, `compute_file_hash`, `parse_python_code`
-
-**Variables:**
-- snake_case: Local variables and parameters
-- Example: `playwright_tools`, `thread_id`, `root_path`
-
-**Constants:**
-- UPPER_SNAKE_CASE: Module-level constants
-- Example: `EXCLUDED_DIRS`, `NUM_GOOGLE_RESULTS`
-
-**Types:**
-- PascalCase: NamedTuple and Pydantic models
-- Example: `ParsedCode`, `SearchResult`
-
-**Imports:**
-- Absolute imports from package root: `from code_monkey.agents.web_researcher.tools import ...`
+- lowercase_snake_case: `compute_file_hash()`, `discover_python_files()`, `parse_python_code()`
 
 ## Where to Add New Code
 
 **New Agent:**
 - Primary code: `code_monkey/agents/<agent_name>/`
+- Tools: `code_monkey/agents/<agent_name>/tools.py`
 - Tests: `tests/agents/<agent_name>/`
-- Initialize module with `__init__.py` if needed
 
-**New Utility for Existing Agent:**
-- Implementation: `code_monkey/agents/<agent>/<utility_name>.py`
-- Export from: `code_monkey/agents/<agent>/__init__.py` (create if needed)
-- Tests: `tests/agents/<agent>/test_<utility_name>.py`
+**New Utility:**
+- Shared utilities: `code_monkey/utils/`
+- Agent-specific utilities: `code_monkey/agents/<agent>/utils/`
 
-**New Shared Utility:**
-- Implementation: `code_monkey/utils/<utility_name>.py`
-- Export from: `code_monkey/utils/__init__.py` (create if needed)
-
-**New Model Function:**
-- Implementation: `code_monkey/models/models.py`
-- Add factory function returning appropriate LangChain model
+**New Data Model:**
+- Agent-specific models: `code_monkey/agents/<agent>/models.py`
+- Shared models: `code_monkey/models/models.py`
 
 **New Test:**
-- Unit tests: `tests/agents/<agent>/test_<module>.py`
-- Pattern: Follow existing test file structure (imports, test class/functions)
+- Unit tests: `tests/agents/<agent>/test_<component>.py`
+- Integration tests: `tests/agents/<agent>/test_<feature>_integration.py`
 
 ## Special Directories
 
-**`.planning/codebase/`:**
-- Purpose: Architecture and convention documentation
+**.codemonkey/ (generated):**
+- Purpose: Cache directory for file hashes and code summaries
+- Location: `<project_root>/.codemonkey/`
+- Generated: Yes (created by ProjectMapper)
+- Committed: No (.gitignored)
+
+**.planning/codebase/ (generated):**
+- Purpose: Generated architecture documentation
+- Location: `.planning/codebase/`
 - Generated: Yes (by /gsd:map-codebase)
 - Committed: Yes (version controlled)
 
-**`.pytest_cache/`:**
-- Purpose: Pytest cache directory
-- Generated: Yes
-- Committed: No (.gitignored)
-
-**`.venv/`:**
-- Purpose: Virtual environment
-- Generated: Yes (by uv)
-- Committed: No (.gitignored)
-
-**`.git/`:**
-- Purpose: Git repository data
-- Generated: Yes (by git init)
-- Committed: No
+**mock_project/:**
+- Purpose: Template projects for testing
+- Location: `mock_project/template/`
+- Generated: No
+- Committed: Yes (test fixtures)
 
 ---
 
-*Structure analysis: 2026-01-31*
+*Structure analysis: 2026-02-02*

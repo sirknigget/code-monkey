@@ -1,110 +1,104 @@
 # External Integrations
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-02
 
 ## APIs & External Services
 
 **LLM Providers:**
 
-- **OpenAI** - Primary LLM provider
-  - Integration: `langchain_openai.ChatOpenAI`
-  - Usage: `code_monkey/models/models.py` - `get_openai_model()`
-  - Auth: `OPENAI_API_KEY` (env var)
+- **Anthropic** - Primary LLM provider (MiniMax-M2.1 model via custom endpoint)
+  - SDK/Client: `langchain-anthropic.ChatAnthropic`
+  - Base URL: `https://api.minimax.io/anthropic` (custom proxy)
+  - Auth: `ANTHROPIC_API_KEY` environment variable
+  - Config: `ANTHROPIC_MODEL` env var (defaults to "MiniMax-M2.1")
 
-- **Anthropic (via MiniMax endpoint)** - Secondary LLM provider
-  - Integration: `langchain_anthropic.ChatAnthropic`
-  - Custom endpoint: `https://api.minimax.io/anthropic`
-  - Usage: `code_monkey/models/models.py` - `get_minimax_model()`
-  - Model: MiniMax-M2.1
-  - Auth: `ANTHROPIC_API_KEY` (env var)
-  - Configuration: `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` (env vars)
+- **OpenAI** - Secondary LLM provider
+  - SDK/Client: `langchain_openai.ChatOpenAI`
+  - Model: `gpt-4o` by default
+  - Auth: `OPENAI_API_KEY` (implicit via langchain-openai)
 
-**Web Research:**
+**Web Search:**
 
 - **Serper API** - Google search results
-  - Integration: `langchain_community.utilities.GoogleSerperAPIWrapper`
-  - Usage: `code_monkey/agents/web_researcher/tools.py` - `google_search_tool()`
-  - Auth: `SERPER_API_KEY` (env var)
-  - Returns: Top 10 organic search results with title, link, snippet
+  - SDK/Client: `langchain_community.utilities.GoogleSerperAPIWrapper`
+  - Auth: `SERPER_API_KEY` environment variable
+  - Usage: `code_monkey/agents/web_researcher/tools.py`
+
+**Observability:**
+
+- **LangSmith** - LLM tracing and observability
+  - Endpoint: `https://api.smith.langchain.com`
+  - Auth: `LANGSMITH_API_KEY` environment variable
+  - Config: `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`
 
 ## Data Storage
 
-**File Storage:**
-- Local filesystem only for code and project files
-- `.codemonkey/file-hashes` - File hash cache (planned)
-- `.codemonkey/code-context` - Per-file summaries (planned)
-- `.codemonkey/project-context` - Project context (planned)
-
 **Caching:**
-- In-memory checkpointer: `langgraph.checkpoint.memory.InMemorySaver`
-  - Usage: `code_monkey/agents/web_researcher/web_researcher.py`
-  - Purpose: LangGraph agent state persistence
+- Local filesystem only
+- Cache directory: `.codemonkey/` (at project root)
+- Storage format: JSON files for hashes, Markdown for summaries
+- Files:
+  - `.codemonkey/file_hashes.json` - File hash cache
+  - `.codemonkey/code_context/*.md` - Per-file summaries
+  - `.codemonkey/project_context.json` - Project-level context
+- Implementation: `code_monkey/agents/project_librarian/cache_manager.py`
+
+**File Storage:**
+- Local filesystem only
+- No external cloud storage integration detected
 
 ## Authentication & Identity
 
-**API Key Management:**
-- All credentials via environment variables
-- `.env` file loaded at application startup
-- Secrets:
-  - `LANGSMITH_API_KEY` - LangSmith tracing
-  - `SERPER_API_KEY` - Serper search
-  - `ANTHROPIC_API_KEY` - Anthropic/MiniMax
-  - `OPENAI_API_KEY` - OpenAI
+**Auth Provider:**
+- API keys via environment variables
+- No OAuth or identity provider integration
 
 ## Monitoring & Observability
 
-**Tracing:**
-- **LangSmith** - LLM application tracing and monitoring
-  - Configuration: `LANGSMITH_TRACING=true`
-  - Endpoint: `https://api.smith.langchain.com`
-  - Project: `code_monkey`
-  - Auth: `LANGSMITH_API_KEY` (env var)
+**Error Tracking:**
+- Not detected (no Sentry, Rollbar, etc.)
+
+**Logs:**
+- Python standard `logging` module
+- Basic configuration in `code_monkey/main.py`:
+  ```python
+  logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+  ```
 
 ## CI/CD & Deployment
 
-**Development Workflow:**
-- Local execution via `uv run python main.py`
-- uv for dependency management and script execution
+**Hosting:**
+- Not detected (no Dockerfile, docker-compose.yml, or cloud config)
 
-**Testing:**
-- pytest runs via `uv run pytest`
+**CI Pipeline:**
+- Not detected (no GitHub Actions, CircleCI, etc.)
 
 ## Environment Configuration
 
 **Required env vars:**
-- `ANTHROPIC_API_KEY` - Anthropic/MiniMax API access
-- `ANTHROPIC_BASE_URL` - Custom Anthropic endpoint (MiniMax)
-- `ANTHROPIC_MODEL` - Model name (MiniMax-M2.1)
-- `OPENAI_API_KEY` - OpenAI API access
-- `SERPER_API_KEY` - Google search via Serper
-- `LANGSMITH_TRACING` - Enable LangSmith tracing (true/false)
-- `LANGSMITH_API_KEY` - LangSmith credentials
-- `LANGSMITH_ENDPOINT` - LangSmith server URL
-- `LANGSMITH_PROJECT` - LangSmith project name
+- `ANTHROPIC_API_KEY` - Anthropic/MiniMax API key
+- `ANTHROPIC_BASE_URL` - Custom Anthropic endpoint (optional, defaults to minimax)
+- `ANTHROPIC_MODEL` - Model name (optional, defaults to MiniMax-M2.1)
+- `SERPER_API_KEY` - Google search API key
+- `LANGSMITH_TRACING` - Enable LangSmith tracing (optional)
+- `LANGSMITH_API_KEY` - LangSmith API key (optional)
+- `LANGSMITH_ENDPOINT` - LangSmith endpoint (optional)
+- `LANGSMITH_PROJECT` - LangSmith project name (optional)
 
 **Secrets location:**
-- `.env` file in project root
-- Loaded with `override=True` to take precedence
+- `.env` file at project root (gitignored)
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- Not applicable - no HTTP server endpoints currently
+- Not detected (no web framework for HTTP endpoints)
 
 **Outgoing:**
-- OpenAI API: `https://api.openai.com/v1/chat/completions`
-- Anthropic/MiniMax: `https://api.minimax.io/anthropic`
-- LangSmith: `https://api.smith.langchain.com`
-- Serper: `https://google.serper.io/search`
-
-## Browser Automation
-
-**Playwright:**
-- Integration: `playwright.async_api` + `langchain_community.agent_toolkits.PlayWrightBrowserToolkit`
-- Usage: `code_monkey/agents/web_researcher/tools.py` - `PlaywrightTools` class
-- Browser: Chromium (configurable headless mode)
-- Tools provided: navigate_browser, click, input, extract_page_content, etc.
+- Anthropic API calls via langchain-anthropic
+- OpenAI API calls via langchain-openai
+- Serper API calls for web search
+- LangSmith API calls for tracing
 
 ---
 
-*Integration audit: 2026-01-31*
+*Integration audit: 2026-02-02*

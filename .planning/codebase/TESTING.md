@@ -1,204 +1,158 @@
-# Testing Patterns
+# Testing
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-02
 
-## Test Framework
+## Framework
 
-**Runner:**
-- `pytest` >= 8.0.0
-- `pytest-asyncio` >= 1.3.0 for async tests
-- Config: `pythonpath = ["."]` in `pyproject.toml`
+**Primary:** pytest
 
-**Assertion Library:**
-- pytest built-in assertions (assert statements)
-
-**Run Commands:**
-```bash
-uv run pytest              # Run all tests
-uv run pytest -v           # Verbose output
-uv run pytest --tb=short   # Shorter traceback
-```
-
-## Test File Organization
-
-**Location:**
-- Separate `tests/` directory mirroring source structure
-- Co-located by agent: `tests/agents/project_librarian/`, `tests/agents/web_researcher/`
-
-**Naming:**
-- `test_*.py` pattern: `test_file_discovery.py`, `test_hash_utils.py`
-- Test classes: `TestDiscoverPythonFiles`, `TestComputeFileHash`
-
-**Structure:**
-```
-tests/
-├── agents/
-│   ├── project_librarian/
-│   │   ├── test_file_discovery.py
-│   │   ├── test_hash_utils.py
-│   │   ├── test_code_parser.py
-│   │   └── test_utilities_integration.py
-│   └── web_researcher/
-│       ├── test_google_search.py
-│       ├── test_playwright_tools.py
-│       └── test_web_researcher.py
-```
+**Async Support:** pytest-asyncio
 
 ## Test Structure
 
-**Suite Organization:**
-- Test classes grouping related tests: `class TestDiscoverPythonFiles:`
-- Each test method has descriptive name: `test_discovers_python_files_at_root_and_nested`
-- Each test has docstring explaining what is verified
+**Location:** `tests/` directory mirroring source structure
 
-**Patterns:**
-```python
-class TestDiscoverPythonFiles:
-    """Test suite for discover_python_files function."""
-
-    def test_discovers_python_files_at_root_and_nested(
-        self, tmp_path: Path
-    ) -> None:
-        """Verify Python files at root and nested levels are discovered."""
-        # Create test structure
-        (tmp_path / "root_file.py").touch()
-        subdir = tmp_path / "subdir"
-        subdir.mkdir()
-        (subdir / "nested_file.py").touch()
-
-        # Discover files
-        result = discover_python_files(tmp_path)
-
-        # Verify both files found
-        assert len(result) == 2
-        assert (tmp_path / "root_file.py") in result
-        assert (tmp_path / "subdir" / "nested_file.py") in result
+```
+tests/
+├── conftest.py                          # Shared fixtures
+├── testing_utils.py                     # Test utilities
+└── agents/
+    ├── project_librarian/
+    │   ├── test_project_mapper.py       # ProjectMapper unit tests
+    │   ├── test_directory_processor.py  # DirectoryProcessor tests
+    │   ├── test_cache_manager.py        # CacheManager tests
+    │   ├── test_summarizer.py           # Summarizer tests
+    │   ├── test_project_mapper_integration.py
+    │   ├── test_project_mapper_real_llm.py
+    │   ├── utils/
+    │   │   ├── test_code_parser.py
+    │   │   ├── test_file_discovery.py
+    │   │   ├── test_hash_utils.py
+    │   │   └── test_utilities_integration.py
+    └── web_researcher/
+        ├── test_web_researcher.py
+        ├── test_google_search.py
+        └── test_playwright_tools.py
 ```
 
-**Setup Pattern:**
-- Uses pytest fixtures: `tmp_path`, `tmpdir`, `tmp_path`
-- Tempfile for file operations
-- No explicit setup/teardown methods needed for simple tests
+## Key Fixtures
 
-**Teardown Pattern:**
-- Explicit cleanup in `try/finally`:
+**conftest.py:**
+
+| Fixture | Purpose |
+|---------|---------|
+| `mock_llm` | MagicMock LLM for unit tests |
+| `template_project(tmp_path)` | Creates isolated copy of `mock_project/template` |
+
+**Pattern:** Template-based testing with isolated working copies
+
+## Mocking Strategy
+
+**LLM Mocking:**
+- Use `unittest.mock.MagicMock()` for LangChain model instances
+- Patch summarizer methods to return mock summaries
+
+**File System:**
+- Use `pytest.TempPathFactory` (tmp_path fixture)
+- Template projects copied to isolated temp directories
+
+## Test Categories
+
+**Unit Tests:**
+- Located alongside source files (e.g., `test_project_mapper.py`)
+- Mock all external dependencies (LLM, file system)
+- Fast execution, no network calls
+
+**Integration Tests:**
+- `test_*_integration.py` suffix
+- Test component interactions
+- May use real LLM or mock file operations
+
+**Real LLM Tests:**
+- `test_project_mapper_real_llm.py`
+- Uses actual API calls (requires API keys)
+- Slower, for validation rather than CI
+
+## Test Patterns
+
+**Generator Testing:**
+
 ```python
-try:
-    result = compute_file_hash(temp_path)
-    assert result == expected_hash
-finally:
-    Path(temp_path).unlink()
+def test_scan_yields_taskresult(self, tmp_path: Path) -> None:
+    """Scan should yield TaskResult objects."""
+    mock_llm = MagicMock()
+    mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
+    (tmp_path / "main.py").write_text("x = 1")
+
+    results = list(mapper.scan())
+
+    assert len(results) >= 1
+    for r in results:
+        assert isinstance(r, TaskResult)
 ```
 
-## Mocking
+**Patch-Based Mocking:**
 
-**Framework:** Not configured
-
-**Patterns:**
-- No mocking framework (unittest.mock) detected
-- Tests use real file system operations
-- Tests create actual temporary files for testing
-- Tests use real API calls (with `.env` loading)
-
-**What is Mocked:**
-- Nothing mocked in current tests
-- All I/O operations are real
-
-**What NOT to Mock:**
-- File operations use real temp files
-- API calls use real services (with env vars)
-
-## Fixtures and Factories
-
-**Test Data:**
-- Created inline in test methods
-- Used `tempfile.NamedTemporaryFile` for file content
-- Used `textwrap.dedent` for multi-line test strings:
 ```python
-file1.write_text(
-    textwrap.dedent(
-        """
-        class DataProcessor:
-            def process(self, data):
-                return data.upper()
-        """
-    )
-)
+with patch.object(mapper._summarizer, 'summarize_file', return_value="mock"):
+    with patch.object(mapper._summarizer, 'summarize_module', return_value="module"):
+        results = list(mapper.scan())
 ```
 
-**Location:**
-- No dedicated fixtures file
-- Fixtures defined in `conftest.py` (not present, using pytest defaults)
+**Progress Tracking Verification:**
+
+```python
+progresses = [r.progress for r in results]
+for i in range(1, len(progresses)):
+    assert progresses[i] >= progresses[i - 1]  # Monotonic increase
+```
 
 ## Coverage
 
-**Requirements:** None enforced
+**Areas with good coverage:**
+- ProjectMapper (multiple test files)
+- DirectoryProcessor
+- CacheManager
+- Summarizer
+- Utility functions (code_parser, file_discovery, hash_utils)
 
-**View Coverage:**
+**Areas needing coverage:**
+- `main.py` entry point
+- `models.py` model factory functions
+- `utils/` shared utilities (task_result, json_utils, langchain_utils)
+
+## Running Tests
+
 ```bash
-uv run pytest --cov=code_monkey --cov-report=term-missing
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=code_monkey
+
+# Run specific test file
+uv run pytest tests/agents/project_librarian/test_project_mapper.py
+
+# Run integration tests
+uv run pytest tests/agents/project_librarian/test_project_mapper_integration.py
+
+# Skip real LLM tests
+uv run pytest --ignore=tests/agents/project_librarian/test_project_mapper_real_llm.py
 ```
 
-## Test Types
+## pytest Configuration
 
-**Unit Tests:**
-- Focus on single functions/classes
-- Test hash_utils: 8 test cases
-- Test code_parser: 5 test classes, 17+ test cases
-- Test file_discovery: 6 test cases
+**From pyproject.toml:**
 
-**Integration Tests:**
-- `test_utilities_integration.py` tests full workflow
-- Tests discovery + hashing + parsing together
-- Tests module imports and API cohesion
-
-**E2E Tests:**
-- `test_google_search.py`: Real Google search API call
-- `test_playwright_tools.py`: Real browser automation tests
-- Uses `@pytest.mark.asyncio` for async tests
-
-## Common Patterns
-
-**Async Testing:**
-```python
-@pytest.mark.asyncio
-async def test_playwright_tools_initialize():
-    """Test PlaywrightTools initialization."""
-    pt = await PlaywrightTools.initialize(headless=True)
-    assert pt._playwright is not None
-    await pt.teardown()
-```
-
-**Error Testing:**
-```python
-def test_raises_on_nonexistent_file():
-    """OSError is raised when file does not exist."""
-    nonexistent_path = "/tmp/this_file_does_not_exist_123456789.xyz"
-    assert not Path(nonexistent_path).exists()
-
-    with pytest.raises(OSError):
-        compute_file_hash(nonexistent_path)
-```
-
-**Path Handling:**
-```python
-def test_discovers_python_files_at_root_and_nested(
-    self, tmp_path: Path
-) -> None:
-    """Verify Python files at root and nested levels are discovered."""
-    (tmp_path / "root_file.py").touch()
-    subdir = tmp_path / "subdir"
-    subdir.mkdir()
-    (subdir / "nested_file.py").touch()
-    result = discover_python_files(tmp_path)
-```
-
-**Environment Loading:**
-```python
-from dotenv import load_dotenv
-load_dotenv(override=True)
+```toml
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
 ```
 
 ---
 
-*Testing analysis: 2026-01-31*
+*Testing analysis: 2026-02-02*
