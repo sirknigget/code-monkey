@@ -66,7 +66,7 @@ None - all tasks completed successfully
 | 005 | ProjectMapper integration test with real LLM | 2026-02-02 | c8bc2bc | [005-project-mapper-integration-test](./quick/005-project-mapper-integration-test/) |
 | 007 | Add console logs to test file | 2026-02-02 | 243e8f5 | [007-add-console-logs-to-test](./quick/007-add-console-logs-to-test/) |
 | 008 | TaskResult class with generator progress | 2026-02-02 | 080c2e2 | [008-task-result-class](./quick/008-task-result-class/) |
-| 009 | TaskResult progress tracking for ProjectMapper | 2026-02-02 | | [009-taskresult-progress-tracking](./quick/009-taskresult-progress-tracking/) |
+| 009 | TaskResult progress tracking for ProjectMapper | 2026-02-02 | ab00502 | [009-taskresult-progress-tracking](./quick/009-taskresult-progress-tracking/) |
 
 ## Session Continuity
 
