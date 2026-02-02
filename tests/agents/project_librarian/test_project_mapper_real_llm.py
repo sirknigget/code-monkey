@@ -12,26 +12,25 @@ import pytest
 
 from code_monkey.models.models import get_minimax_model
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
-from tests.agents.project_librarian.conftest import crewai_working_copy
 
 
 class TestProjectMapperRealLLM:
     """Integration tests using real LLM and realistic mock project."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self, crewai_working_copy: Path):
+    def setup_and_teardown(self, mock_project_working_copy: Path):
         """Clean up .codemonkey cache before and after each test."""
-        cache_path = crewai_working_copy / ".codemonkey"
+        cache_path = mock_project_working_copy / ".codemonkey"
         if cache_path.exists():
             shutil.rmtree(cache_path)
         yield
         if cache_path.exists():
             shutil.rmtree(cache_path)
 
-    def test_real_llm_fresh_scan(self, crewai_working_copy: Path):
+    def test_real_llm_fresh_scan(self, mock_project_working_copy: Path):
         """Test full scan with real LLM generates project context."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Run full scan
         module_summaries = mapper.scan()
@@ -41,7 +40,7 @@ class TestProjectMapperRealLLM:
         assert len(module_summaries) > 0
 
         # Verify .codemonkey cache was created
-        cache_path = crewai_working_copy / ".codemonkey"
+        cache_path = mock_project_working_copy / ".codemonkey"
         assert cache_path.exists()
 
         # Verify file_hashes.json cache exists
@@ -68,17 +67,17 @@ class TestProjectMapperRealLLM:
         module_summary_files = list(cache_path.rglob("_module.md"))
         assert len(module_summary_files) > 0
 
-    def test_real_llm_incremental_update(self, crewai_working_copy: Path):
+    def test_real_llm_incremental_update(self, mock_project_working_copy: Path):
         """Test incremental update behavior with real LLM."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # First scan
         result1 = mapper.scan()
         assert len(result1) > 0
 
         # Modify a file in the mock project
-        test_file = crewai_working_copy / "src" / "crewai_trading_strategy" / "__init__.py"
+        test_file = mock_project_working_copy / "src" / "crewai_trading_strategy" / "__init__.py"
         original_content = test_file.read_text()
 
         # Add a comment to trigger change detection
@@ -94,18 +93,18 @@ class TestProjectMapperRealLLM:
             # Restore original content
             test_file.write_text(original_content)
 
-    def test_real_llm_specified_file_update(self, crewai_working_copy: Path):
+    def test_real_llm_specified_file_update(self, mock_project_working_copy: Path):
         """Test update with specific file paths using real LLM."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Initial scan
         mapper.scan()
 
         # Specify specific files to update
         files_to_update = [
-            crewai_working_copy / "src" / "utils" / "safe_python_code_executor.py",
-            crewai_working_copy / "src" / "crewai_trading_strategy" / "constants.py",
+            mock_project_working_copy / "src" / "utils" / "safe_python_code_executor.py",
+            mock_project_working_copy / "src" / "crewai_trading_strategy" / "constants.py",
         ]
 
         # Run update with specific files - returns dict[Path, str] of module summaries
@@ -113,16 +112,16 @@ class TestProjectMapperRealLLM:
         assert result is not None
         assert len(result) >= 1  # Should return module summaries
 
-    def test_real_llm_generates_module_summaries(self, crewai_working_copy: Path):
+    def test_real_llm_generates_module_summaries(self, mock_project_working_copy: Path):
         """Test that module summaries are generated in the cache."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Run scan
         mapper.scan()
 
         # Check that cache directory has module summaries
-        cache_path = crewai_working_copy / ".codemonkey"
+        cache_path = mock_project_working_copy / ".codemonkey"
 
         # Should have multiple _module.md files
         module_summary_files = list(cache_path.rglob("_module.md"))
@@ -134,16 +133,16 @@ class TestProjectMapperRealLLM:
                 content = f.read()
                 assert len(content) > 10  # Should have some LLM-generated content
 
-    def test_real_llm_cache_survives_reload(self, crewai_working_copy: Path):
+    def test_real_llm_cache_survives_reload(self, mock_project_working_copy: Path):
         """Test that cached data can be reloaded correctly."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Initial scan
         mapper.scan()
 
         # Create new mapper instance (simulates restart)
-        mapper2 = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper2 = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Should be able to load existing hashes
         loaded_hashes = mapper2._cache.load_hashes()
@@ -160,25 +159,25 @@ class TestProjectMapperRealLLMWithModifiedProject:
     """Test ProjectMapper with various modifications to the mock project."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self, crewai_working_copy: Path):
+    def setup_and_teardown(self, mock_project_working_copy: Path):
         """Clean up .codemonkey cache before and after each test."""
-        cache_path = crewai_working_copy / ".codemonkey"
+        cache_path = mock_project_working_copy / ".codemonkey"
         if cache_path.exists():
             shutil.rmtree(cache_path)
         yield
         if cache_path.exists():
             shutil.rmtree(cache_path)
 
-    def test_handles_new_subdirectory(self, crewai_working_copy: Path):
+    def test_handles_new_subdirectory(self, mock_project_working_copy: Path):
         """Test that new subdirectories are discovered and processed."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Initial scan
         mapper.scan()
 
         # Create a new subdirectory with files
-        new_dir = crewai_working_copy / "src" / "utils" / "new_feature"
+        new_dir = mock_project_working_copy / "src" / "utils" / "new_feature"
         new_dir.mkdir(exist_ok=True)
         (new_dir / "__init__.py").write_text('"""New feature module."""\n')
         (new_dir / "handler.py").write_text('def handle(): pass\n')
@@ -192,16 +191,16 @@ class TestProjectMapperRealLLMWithModifiedProject:
             # Clean up
             shutil.rmtree(new_dir)
 
-    def test_cache_contains_file_summaries(self, crewai_working_copy: Path):
+    def test_cache_contains_file_summaries(self, mock_project_working_copy: Path):
         """Verify individual file summaries are cached."""
         llm = get_minimax_model()
-        mapper = ProjectMapper(root=crewai_working_copy, llm=llm)
+        mapper = ProjectMapper(root=mock_project_working_copy, llm=llm)
 
         # Run scan
         mapper.scan()
 
         # Check for file-specific summaries in cache
-        cache_path = crewai_working_copy / ".codemonkey"
+        cache_path = mock_project_working_copy / ".codemonkey"
 
         # Look for any .md files in the cache (these are file/module summaries)
         md_files = list(cache_path.rglob("*.md"))
