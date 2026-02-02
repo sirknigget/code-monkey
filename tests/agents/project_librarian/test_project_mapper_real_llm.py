@@ -8,11 +8,11 @@ import json
 import shutil
 from pathlib import Path
 
+import dotenv
 import pytest
 
 from code_monkey.models.models import get_minimax_model
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
-
 
 class TestProjectMapperRealLLM:
     """Integration tests using real LLM and realistic mock project."""

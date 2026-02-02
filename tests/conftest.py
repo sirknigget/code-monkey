@@ -8,7 +8,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import dotenv
 import pytest
+
+@pytest.fixture(scope="session", autouse=True)
+def load_env():
+    dotenv.load_dotenv(override=True)
 
 # Path to the mock project root
 MOCK_PROJECT_ROOT = "mock_project"
@@ -36,8 +41,4 @@ def mock_project_working_copy(tmp_path, mock_project_template_root: Path) -> Pat
     temp_copy = MOCK_PROJECT_ROOT / tmp_path / MOCK_PROJECT_NAME
     shutil.copytree(mock_project_template_root, temp_copy)
 
-    yield temp_copy
-
-    # Cleanup is automatic due to tmp_path, but explicit cleanup for safety
-    if temp_copy.exists():
-        shutil.rmtree(temp_copy)
+    return temp_copy
