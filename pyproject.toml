@@ -20,3 +20,4 @@ dependencies = [
 ]
 [tool.pytest.ini_options]
 pythonpath = ["."]
+norecursedir = [".env", ".git", ".venv"]

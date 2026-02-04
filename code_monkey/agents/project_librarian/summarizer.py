@@ -8,6 +8,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 
+from code_monkey.agents.project_librarian.cache_manager import (
+    CodeContext,
+    ModuleContext,
+)
+
 
 class Summarizer:
     """LLM-based file, module, and project summarization with retry logic.
@@ -200,30 +205,96 @@ Project Structure:
             self._module_chain, input_vars, self.MAX_SUMMARY_LINES
         )
 
+    def summarize_project(
+        self,
+        code_context: CodeContext,
+        project_name: str = "project",
+    ) -> str:
+        """Generate root summary from code context.
+
+        Args:
+            code_context: Hierarchical code context.
+            project_name: Name of the project for display.
+
+        Returns:
+            Root module summary string.
+        """
+        # Collect all module summaries recursively
+        summary_parts: list[tuple[tuple[str, ...], str]] = []
+
+        def collect_summaries(
+            modules: dict[str, ModuleContext], path: tuple[str, ...]
+        ) -> None:
+            for name, module in modules.items():
+                current_path = path + (name,)
+                summary_parts.append((current_path, module.summary))
+                collect_summaries(module.submodules, current_path)
+
+        collect_summaries(code_context.modules, ())
+
+        # Format for LLM
+        formatted = []
+        for path_parts, summary in summary_parts:
+            path_str = "/".join(path_parts)
+            formatted.append(f"{path_str}: {summary}")
+        combined = "\n".join(formatted)
+
+        input_vars = {
+            "module_summaries": combined,
+            "project_name": project_name,
+            "indented_summary": combined,
+        }
+        return self._summarize_with_retry(
+            self._project_chain, input_vars, self.MAX_SUMMARY_LINES
+        )
+
     def generate_project_context(
-        self, module_summaries: dict[Path, str], project_name: str = "project"
+        self,
+        code_context: CodeContext | dict[Path, str],
+        project_name: str = "project",
     ) -> str:
         """Generate project-wide context using indentation tree format.
 
         Args:
-            module_summaries: Dictionary mapping directory paths to summaries.
+            code_context: Hierarchical code context or legacy dict.
             project_name: Name of the project for display.
 
         Returns:
             Project context string in indentation tree format.
         """
-        # Format module summaries for the template
-        summary_parts = []
-        for dir_path, summary in sorted(module_summaries.items()):
-            rel_path = dir_path.relative_to(dir_path.root)
-            summary_parts.append(f"{rel_path}: {summary}")
+        # Handle both CodeContext and legacy dict format
+        if isinstance(code_context, CodeContext):
+            # Collect all module summaries recursively
+            summary_parts: list[tuple[tuple[str, ...], str]] = []
 
-        combined = "\n".join(summary_parts)
+            def collect_summaries(
+                modules: dict[str, ModuleContext], path: tuple[str, ...]
+            ) -> None:
+                for name, module in modules.items():
+                    current_path = path + (name,)
+                    summary_parts.append((current_path, module.summary))
+                    collect_summaries(module.submodules, current_path)
+
+            collect_summaries(code_context.modules, ())
+
+            # Format for LLM
+            formatted = []
+            for path_parts, summary in summary_parts:
+                path_str = "/".join(path_parts)
+                formatted.append(f"{path_str}: {summary}")
+            combined = "\n".join(formatted)
+        else:
+            # Legacy dict format
+            summary_parts = []
+            for dir_path, summary in sorted(code_context.items()):
+                rel_path = dir_path.relative_to(dir_path.root)
+                summary_parts.append(f"{rel_path}: {summary}")
+            combined = "\n".join(summary_parts)
 
         input_vars = {
             "module_summaries": combined,
             "project_name": project_name,
-            "indented_summary": combined,  # Will be indented by template
+            "indented_summary": combined,
         }
         return self._summarize_with_retry(
             self._project_chain, input_vars, self.MAX_SUMMARY_LINES

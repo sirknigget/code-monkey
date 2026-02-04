@@ -1,21 +1,43 @@
-"""Cache Manager for atomic cache reads/writes."""
+"""Cache Manager for atomic cache reads/writes.
+
+Cache structure:
+- .codemonkey/file_hashes.json - {"/absolute/path": "hash", ...}
+- .codemonkey/code_context.json - hierarchical code context
+- .codemonkey/project_context.json - project-wide context
+"""
 
 import json
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
+
+
+class FileContext(NamedTuple):
+    """A file in the code hierarchy."""
+
+    summary: str
+
+
+class ModuleContext(NamedTuple):
+    """A module in the code hierarchy."""
+
+    summary: str
+    files: dict[str, FileContext]
+    submodules: dict[str, "ModuleContext"]
+
+
+class CodeContext(NamedTuple):
+    """Root code context containing the modules hierarchy."""
+
+    root_summary: str
+    modules: dict[str, ModuleContext]
 
 
 class CacheManager:
-    """Manages atomic cache reads/writes for project mapping data.
-
-    Cache structure:
-    - .codemonkey/file_hashes.json - {"/absolute/path": "hash", ...}
-    - .codemonkey/code_context/{rel_path}.md - per-file summaries
-    - .codemonkey/project_context.json - project-wide context
-    """
+    """Manages atomic cache reads/writes for project mapping data."""
 
     HASHES_FILENAME = "file_hashes.json"
-    CODE_CONTEXT_DIR = "code_context"
+    CODE_CONTEXT_FILENAME = "code_context.json"
     PROJECT_CONTEXT_FILENAME = "project_context.json"
 
     def __init__(self, root: Path) -> None:
@@ -57,117 +79,85 @@ class CacheManager:
         """
         self._ensure_cache_dir()
         hashes_file = self.cache_dir / self.HASHES_FILENAME
-        # Write to temp file first, then rename for atomicity
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", dir=self.cache_dir, delete=False
         ) as tmp:
             json.dump(hashes, tmp, indent=2)
             tmp_path = tmp.name
-        # Atomic rename
         Path(tmp_path).rename(hashes_file)
 
-    def _get_cache_path(self, relative_path: Path) -> Path:
-        """Get cache path for a file or directory.
+    def _context_to_dict(self, ctx: CodeContext) -> dict:
+        """Convert CodeContext to serializable dict."""
+        def module_to_dict(module: ModuleContext) -> dict:
+            return {
+                "summary": module.summary,
+                "files": {
+                    name: {"summary": f.summary}
+                    for name, f in module.files.items()
+                },
+                "submodules": {
+                    name: module_to_dict(sub)
+                    for name, sub in module.submodules.items()
+                }
+            }
+        return {
+            "root_summary": ctx.root_summary,
+            "modules": {
+                name: module_to_dict(m) for name, m in ctx.modules.items()
+            }
+        }
+
+    def _dict_to_context(self, data: dict) -> CodeContext:
+        """Convert dict to CodeContext."""
+        def dict_to_module(data: dict) -> ModuleContext:
+            files = {}
+            for name, file_data in data.get("files", {}).items():
+                files[name] = FileContext(summary=file_data["summary"])
+            submodules = {}
+            for name, sub_data in data.get("submodules", {}).items():
+                submodules[name] = dict_to_module(sub_data)
+            return ModuleContext(
+                summary=data["summary"],
+                files=files,
+                submodules=submodules
+            )
+        modules = {}
+        for name, module_data in data.get("modules", {}).items():
+            modules[name] = dict_to_module(module_data)
+        return CodeContext(
+            root_summary=data.get("root_summary", ""),
+            modules=modules
+        )
+
+    def save_code_context(self, ctx: CodeContext) -> None:
+        """Atomically save code context to cache.
 
         Args:
-            relative_path: Relative path from project root.
-
-        Returns:
-            Cache path within .codemonkey directory.
-        """
-        return self.cache_dir / relative_path.as_posix().lstrip("/")
-
-    def get_file_summary_path(self, filepath: Path) -> Path:
-        """Get cache path for a file summary.
-
-        Args:
-            filepath: Absolute path to the file.
-
-        Returns:
-            Path to the .md summary file.
-        """
-        rel_path = filepath.relative_to(self.root)
-        return self._get_cache_path(rel_path).with_suffix(".md")
-
-    def save_file_summary(self, filepath: Path, summary: str) -> None:
-        """Atomically save a file summary.
-
-        Args:
-            filepath: Absolute path to the source file.
-            summary: LLM-generated summary string.
-        """
-        self._ensure_cache_dir()
-        cache_path = self.get_file_summary_path(filepath)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", dir=cache_path.parent, delete=False
-        ) as tmp:
-            tmp.write(summary)
-            tmp_path = tmp.name
-        Path(tmp_path).rename(cache_path)
-
-    def load_file_summary(self, filepath: Path) -> str | None:
-        """Load a file summary from cache.
-
-        Args:
-            filepath: Absolute path to the source file.
-
-        Returns:
-            Summary string or None if not cached.
-        """
-        cache_path = self.get_file_summary_path(filepath)
-        if not cache_path.exists():
-            return None
-        try:
-            return cache_path.read_text(encoding="utf-8")
-        except OSError:
-            return None
-
-    def get_module_summary_path(self, directory: Path) -> Path:
-        """Get cache path for a module summary.
-
-        Args:
-            directory: Absolute path to the module directory.
-
-        Returns:
-            Path to the _module.md summary file.
-        """
-        rel_path = directory.relative_to(self.root)
-        cache_path = self._get_cache_path(rel_path)
-        return cache_path / "_module.md"
-
-    def save_module_summary(self, directory: Path, summary: str) -> None:
-        """Atomically save a module summary.
-
-        Args:
-            directory: Absolute path to the module directory.
-            summary: LLM-generated summary string.
+            ctx: CodeContext containing modules hierarchy.
         """
         self._ensure_cache_dir()
-        cache_path = self.get_module_summary_path(directory)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        context_file = self.cache_dir / self.CODE_CONTEXT_FILENAME
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", dir=cache_path.parent, delete=False
+            mode="w", suffix=".json", dir=self.cache_dir, delete=False
         ) as tmp:
-            tmp.write(summary)
+            json.dump(self._context_to_dict(ctx), tmp, indent=2)
             tmp_path = tmp.name
-        Path(tmp_path).rename(cache_path)
+        Path(tmp_path).rename(context_file)
 
-    def load_module_summary(self, directory: Path) -> str | None:
-        """Load a module summary from cache.
-
-        Args:
-            directory: Absolute path to the module directory.
+    def load_code_context(self) -> CodeContext | None:
+        """Load code context from cache.
 
         Returns:
-            Summary string or None if not cached.
+            CodeContext or None if not cached.
         """
-        cache_path = self.get_module_summary_path(directory)
-        if not cache_path.exists():
+        context_file = self.cache_dir / self.CODE_CONTEXT_FILENAME
+        if not context_file.exists():
             return None
         try:
-            return cache_path.read_text(encoding="utf-8")
-        except OSError:
+            with open(context_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return self._dict_to_context(data)
+        except (json.JSONDecodeError, OSError, KeyError):
             return None
 
     def save_project_context(self, context: str) -> None:
@@ -197,9 +187,9 @@ class CacheManager:
         try:
             with open(context_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("context")
+            return data.get("context")
         except (json.JSONDecodeError, OSError, KeyError):
             return None
 
 
-__all__ = ["CacheManager"]
+__all__ = ["CacheManager", "CodeContext", "ModuleContext", "FileContext"]

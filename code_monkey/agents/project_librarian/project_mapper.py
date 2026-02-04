@@ -13,9 +13,11 @@ from typing import Any, Generator
 
 from langchain_core.language_models import BaseChatModel
 
-from code_monkey.agents.project_librarian.cache_manager import CacheManager
-from code_monkey.agents.project_librarian.directory_processor import (
-    DirectoryProcessor,
+from code_monkey.agents.project_librarian.cache_manager import (
+    CacheManager,
+    CodeContext,
+    FileContext,
+    ModuleContext,
 )
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
@@ -28,23 +30,27 @@ class ProjectMapperResult:
     """Result container for ProjectMapper operations.
 
     Attributes:
-        module_summaries: Dictionary mapping directory paths to their summaries.
+        code_context: The full code context hierarchy.
+        project_context: Project-wide context string.
     """
 
     def __init__(
         self,
-        module_summaries: dict[Path, str],
+        code_context: CodeContext,
+        project_context: str,
     ) -> None:
         """Initialize result container.
 
         Args:
-            module_summaries: Dictionary mapping directory paths to their summaries.
+            code_context: Hierarchical code context.
+            project_context: Project-wide context string.
         """
-        self.module_summaries = module_summaries
+        self.code_context = code_context
+        self.project_context = project_context
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"ProjectMapperResult(modules={len(self.module_summaries)})"
+        return f"ProjectMapperResult(modules={len(self.code_context.modules)})"
 
 
 class ProjectMapper:
@@ -60,8 +66,9 @@ class ProjectMapper:
         mapper = ProjectMapper(root=Path("."), llm=llm)
         for result in mapper.scan():  # Generator of TaskResult
             print(f"Progress: {result.progress_percent:.1f}%")
-        summaries = result.result.module_summaries  # Final result
-        context = mapper.get_project_context()  # Get cached/generated context
+        final = result.result  # Final ProjectMapperResult
+        context = final.code_context  # Hierarchical context
+        project_ctx = final.project_context  # Project-wide context
     """
 
     def __init__(
@@ -88,9 +95,6 @@ class ProjectMapper:
         # Initialize summarizer
         self._summarizer = Summarizer(llm)
 
-        # Initialize directory processor
-        self._processor = DirectoryProcessor(root, self._cache, self._summarizer)
-
         # Cache for project context
         self._project_context: str | None = None
 
@@ -102,6 +106,197 @@ class ProjectMapper:
         """
         files = discover_python_files(self.root)
         return {str(f): compute_file_hash(f) for f in files}
+
+    def _build_module_path(self, directory: Path) -> tuple[str, ...]:
+        """Build the module path tuple for a directory.
+
+        Args:
+            directory: Directory path relative to root.
+
+        Returns:
+            Tuple of module names from root to this directory.
+        """
+        parts = directory.relative_to(self.root).parts
+        return tuple(parts) if parts else ()
+
+    def _get_module(
+        self,
+        ctx: CodeContext,
+        module_path: tuple[str, ...],
+    ) -> ModuleContext | None:
+        """Get a module from the context by path.
+
+        Args:
+            ctx: CodeContext to search.
+            module_path: Tuple of module names from root.
+
+        Returns:
+            ModuleContext or None if not found.
+        """
+        modules = ctx.modules
+        for name in module_path:
+            if name not in modules:
+                return None
+            modules = modules[name].submodules
+        # If module_path is empty, we need the root, but this is handled specially
+        return None
+
+    def _set_module(
+        self,
+        ctx: CodeContext,
+        module_path: tuple[str, ...],
+        module: ModuleContext,
+    ) -> CodeContext:
+        """Set a module in the context, creating parents as needed.
+
+        Args:
+            ctx: Current CodeContext.
+            module_path: Tuple of module names from root.
+            module: ModuleContext to set.
+
+        Returns:
+            New CodeContext with module set.
+        """
+        if not module_path:
+            # Setting root_summary
+            return CodeContext(root_summary=module.summary, modules=ctx.modules)
+
+        # Clone the modules dict and create path
+        new_modules: dict[str, ModuleContext] = {}
+        for name, mod in ctx.modules.items():
+            new_modules[name] = ModuleContext(
+                summary=mod.summary,
+                files=dict(mod.files),
+                submodules=dict(mod.submodules),
+            )
+
+        current = new_modules
+        for i, name in enumerate(module_path[:-1]):
+            if name not in current:
+                # Create missing parent
+                current[name] = ModuleContext(
+                    summary="",
+                    files={},
+                    submodules={},
+                )
+            parent = current[name]
+            new_submodules: dict[str, ModuleContext] = {}
+            for subname, submod in parent.submodules.items():
+                new_submodules[subname] = ModuleContext(
+                    summary=submod.summary,
+                    files=dict(submod.files),
+                    submodules=dict(submod.submodules),
+                )
+            current = new_submodules
+
+        # Set the final module
+        final_name = module_path[-1]
+        current[final_name] = module
+
+        return CodeContext(root_summary=ctx.root_summary, modules=new_modules)
+
+    def _process_file(
+        self,
+        filepath: Path,
+        existing_context: CodeContext | None,
+    ) -> FileContext:
+        """Process a single file and return its context.
+
+        Args:
+            filepath: Path to the Python file.
+            existing_context: Existing CodeContext if available.
+
+        Returns:
+            FileContext with summary.
+        """
+        # Try to get existing summary from context
+        if existing_context is not None:
+            module_path = self._build_module_path(filepath.parent)
+            module = self._get_module(existing_context, module_path)
+            if module is not None:
+                filename = filepath.name
+                if filename in module.files:
+                    return module.files[filename]
+
+        # Generate new summary
+        source = filepath.read_text(encoding="utf-8")
+        from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code
+        parsed = parse_python_code(source)
+        structure = parsed.llm_friendly_string(include_imports=True)
+        summary = self._summarizer.summarize_file(filepath, structure, parent_context=None)
+        return FileContext(summary=summary)
+
+    def _process_directory(
+        self,
+        directory: Path,
+        code_context: CodeContext | None,
+        changed_files: set[Path],
+    ) -> tuple[ModuleContext, bool]:
+        """Process a directory and return its module context.
+
+        Args:
+            directory: Directory to process.
+            code_context: Existing CodeContext if available.
+            changed_files: Set of files that have changed.
+
+        Returns:
+            Tuple of (ModuleContext, was_modified).
+        """
+        module_path = self._build_module_path(directory)
+        existing_module = None
+        if code_context is not None:
+            existing_module = self._get_module(code_context, module_path)
+
+        # Get files in this directory
+        files = sorted(directory.glob("*.py"))
+        file_contexts: dict[str, FileContext] = {}
+        any_changed = False
+
+        for f in files:
+            if f in changed_files:
+                any_changed = True
+            file_contexts[f.name] = self._process_file(f, code_context)
+            changed_files.discard(f)
+
+        # Get child directories
+        child_dirs = sorted(
+            d for d in directory.iterdir() if d.is_dir() and d.name != ".codemonkey"
+        )
+
+        # Process child directories
+        submodule_contexts: dict[str, ModuleContext] = {}
+        for child_dir in child_dirs:
+            if any(child_dir.glob("*.py")):
+                child_module, child_changed = self._process_directory(
+                    child_dir, code_context, changed_files
+                )
+                submodule_contexts[child_dir.name] = child_module
+                if child_changed:
+                    any_changed = True
+
+        # Determine if we need to regenerate module summary
+        needs_summary_regen = any_changed
+        if not needs_summary_regen and existing_module is not None:
+            # Check if files structure changed
+            if set(existing_module.files.keys()) != set(file_contexts.keys()):
+                needs_summary_regen = True
+
+        # Generate module summary
+        if needs_summary_regen:
+            file_summaries = [fc.summary for fc in file_contexts.values()]
+            module_summary = self._summarizer.summarize_module(
+                directory, file_summaries, parent_context=None
+            )
+        elif existing_module is not None:
+            module_summary = existing_module.summary
+        else:
+            module_summary = ""
+
+        return ModuleContext(
+            summary=module_summary,
+            files=file_contexts,
+            submodules=submodule_contexts,
+        ), needs_summary_regen
 
     def _run(
         self, changed_dirs: set[Path] | None = None
@@ -115,10 +310,15 @@ class ProjectMapper:
         Yields:
             TaskResult containing ProjectMapperResult with progress tracking.
         """
+        # Load existing code context
+        existing_context = self._cache.load_code_context()
+
         # Progress points: 1 (initial scan) + N (directory processing) + 1 (project context)
-        # For the initial scan phase, we use progress_max = 1 (just the scan operation)
         yield TaskResult(
-            result=ProjectMapperResult(module_summaries={}),
+            result=ProjectMapperResult(
+                code_context=CodeContext(root_summary="", modules={}),
+                project_context="",
+            ),
             progress=0,
             progress_max=1,
         )
@@ -155,48 +355,90 @@ class ProjectMapper:
             # Save new hashes
             self._cache.save_hashes(current_hashes)
 
-        # Calculate total progress: 1 (scan) + N (dirs) + 1 (project context)
+        # If no changes, return existing context
+        if not changed_dirs:
+            project_context = self._cache.load_project_context() or ""
+            if existing_context is not None:
+                yield TaskResult(
+                    result=ProjectMapperResult(
+                        code_context=existing_context,
+                        project_context=project_context,
+                    ),
+                    progress=1,
+                    progress_max=1,
+                )
+                return
+
+        # Calculate total progress
         num_dirs = len(changed_dirs)
         total_progress_max = num_dirs + 2  # +1 for scan, +1 for project context
 
-        # Mark initial scan complete (1 point used)
+        # Mark initial scan complete
         yield TaskResult(
-            result=ProjectMapperResult(module_summaries={}),
+            result=ProjectMapperResult(
+                code_context=CodeContext(root_summary="", modules={}),
+                project_context="",
+            ),
             progress=1,
             progress_max=total_progress_max,
         )
 
-        # Process changed directories (generator of TaskResult)
-        task_results = self._processor.process_changed_directories(changed_dirs)
+        # Process directories top-down
+        # Sort by path depth to process parent directories first
+        sorted_dirs = sorted(changed_dirs, key=lambda p: len(p.parts))
+        all_module_contexts: dict[tuple[str, ...], ModuleContext] = {}
 
-        # Consume generator and get final result
-        # Directory progress starts at 1 (after initial scan)
-        module_summaries: dict[Path, str] = {}
-        for task_result in task_results:
-            # Map directory processor progress to our total progress
-            # Directory progress: 0 to N, we map to: 1 to N+1
-            dir_progress = task_result.progress
-            if dir_progress > 0:
-                mapped_progress = dir_progress  # dir_progress already 1-indexed
-            else:
-                mapped_progress = 1
+        # Copy existing context for modification
+        if existing_context is None:
+            current_context = CodeContext(root_summary="", modules={})
+        else:
+            current_context = existing_context
+
+        for i, directory in enumerate(sorted_dirs):
+            module_path = self._build_module_path(directory)
+            module, _ = self._process_directory(
+                directory, current_context, changed_files.copy()
+            )
+            all_module_contexts[module_path] = module
+            current_context = self._set_module(current_context, module_path, module)
 
             yield TaskResult(
-                result=ProjectMapperResult(module_summaries=task_result.result),
-                progress=mapped_progress,
+                result=ProjectMapperResult(
+                    code_context=current_context,
+                    project_context="",
+                ),
+                progress=i + 2,
                 progress_max=total_progress_max,
             )
-            module_summaries = task_result.result
+
+        # Update root summary if any changes
+        root_updated = False
+        if all_module_contexts:
+            # Generate new root summary
+            root_summary = self._summarizer.summarize_project(
+                current_context, project_name=self.root.name
+            )
+            current_context = CodeContext(
+                root_summary=root_summary,
+                modules=current_context.modules,
+            )
+            root_updated = True
+
+        # Save code context
+        self._cache.save_code_context(current_context)
 
         # Generate project context (final 1 point)
         project_context = self._summarizer.generate_project_context(
-            module_summaries, project_name=self.root.name
+            current_context, project_name=self.root.name
         )
         self._cache.save_project_context(project_context)
         self._project_context = project_context
 
-        # Final result with complete progress
-        final_result = ProjectMapperResult(module_summaries=module_summaries)
+        # Final result
+        final_result = ProjectMapperResult(
+            code_context=current_context,
+            project_context=project_context,
+        )
         yield TaskResult(
             result=final_result,
             progress=total_progress_max,
@@ -208,7 +450,7 @@ class ProjectMapper:
 
         Yields:
             TaskResult containing ProjectMapperResult with progress tracking.
-            Final result contains module_summaries dictionary.
+            Final result contains code_context and project_context.
         """
         yield from self._run(changed_dirs=None)
 
@@ -222,7 +464,7 @@ class ProjectMapper:
 
         Yields:
             TaskResult containing ProjectMapperResult with progress tracking.
-            Final result contains module_summaries dictionary.
+            Final result contains code_context and project_context.
         """
         # Compute changed directories from paths
         changed_dirs: set[Path] = set()
@@ -253,7 +495,8 @@ class ProjectMapper:
             return cached
 
         # If no cached context, run a scan
-        self.scan()
+        for _ in self.scan():
+            pass
         return self._project_context or ""
 
 
