@@ -37,6 +37,8 @@ class ParsedCode(NamedTuple):
     functions: list[CodeNode] = []
     imports: list[str] = []
 
+    found_syntax_error: bool = False
+
     def llm_friendly_string(self, include_imports: bool = True) -> str:
         """Return a formatted string representation suitable for LLM consumption.
 
@@ -66,7 +68,12 @@ class ParsedCode(NamedTuple):
             lines.append("=== Imports ===")
             for imp in self.imports:
                 lines.append(f"- {imp}")
-
+        if (self.found_syntax_error):
+            lines.append("")
+            lines.append("=== Note ===")
+            lines.append(
+                "The source code contained syntax errors and could not be fully parsed."
+            )
         return "\n".join(lines)
 
     def _format_node(self, node: CodeNode, indent: int) -> str:
@@ -230,7 +237,7 @@ def parse_python_code(source: str) -> ParsedCode:
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return ParsedCode(classes=[], functions=[], imports=[])
+        return ParsedCode(classes=[], functions=[], imports=[], found_syntax_error=True)
 
     extractor = CodeExtractor()
     extractor.visit(tree)

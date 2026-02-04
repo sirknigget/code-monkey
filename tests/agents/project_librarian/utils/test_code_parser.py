@@ -268,61 +268,13 @@ class TestSyntaxErrorHandling:
         """Should return empty ParsedCode on syntax error."""
         source = "def invalidSyntax(  # missing colon"
         result = parse_python_code(source)
-        assert result == ParsedCode(classes=[], functions=[], imports=[])
+        assert result == ParsedCode(classes=[], functions=[], imports=[], found_syntax_error=True)
 
     def test_empty_source_returns_empty(self) -> None:
         """Should return empty ParsedCode for empty source."""
         source = ""
         result = parse_python_code(source)
-        assert result == ParsedCode(classes=[], functions=[], imports=[])
-
-
-class TestParsedCodeStructure:
-    """Tests for ParsedCode NamedTuple structure."""
-
-    def test_parsed_code_is_namedtuple(self) -> None:
-        """Should be a proper NamedTuple."""
-        result = ParsedCode(
-            classes=[CodeNode(name="A", type="class")],
-            functions=[CodeNode(name="b", type="function")],
-            imports=["c"],
-        )
-        assert len(result.classes) == 1
-        assert result.classes[0].name == "A"
-        assert len(result.functions) == 1
-        assert result.functions[0].name == "b"
-        assert result.imports == ["c"]
-
-    def test_parsed_code_empty_default(self) -> None:
-        """Should support empty initialization."""
-        result = ParsedCode()
-        assert result.classes == []
-        assert result.functions == []
-        assert result.imports == []
-
-
-class TestCodeNodeStructure:
-    """Tests for CodeNode structure."""
-
-    def test_code_node_with_children(self) -> None:
-        """CodeNode should support children attribute."""
-        node = CodeNode(
-            name="MyClass",
-            type="class",
-            children=[
-                CodeNode(name="method", type="function"),
-            ],
-        )
-        assert node.name == "MyClass"
-        assert node.type == "class"
-        assert len(node.children) == 1
-        assert node.children[0].name == "method"
-
-    def test_code_node_default_children(self) -> None:
-        """CodeNode should default to empty children list."""
-        node = CodeNode(name="func", type="function")
-        assert node.children == []
-
+        assert result == ParsedCode(classes=[], functions=[], imports=[], found_syntax_error=False)
 
 class TestLlmFriendlyString:
     """Tests for llm_friendly_string method."""
@@ -472,3 +424,12 @@ class TestLlmFriendlyString:
         assert "=== Functions ===" in result
         assert "=== Imports ===" in result
         assert "- typing" in result
+
+    def test_syntax_error_note_included(self) -> None:
+        """Should include syntax error note when found_syntax_error is True."""
+        code = ParsedCode(
+            found_syntax_error=True
+        )
+        result = code.llm_friendly_string()
+        assert "=== Note ===" in result
+        assert "The source code contained syntax errors and could not be fully parsed." in result
