@@ -7,11 +7,9 @@ from typing import Any, Generator
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.models import FileSummary
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.agents.project_librarian.utils import (
-    discover_python_files,
-    parse_python_code,
-)
-from code_monkey.utils import TaskResult
+from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code
+from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
+
 from code_monkey.utils.task_result import TaskResult
 
 

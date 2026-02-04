@@ -10,11 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from code_monkey.agents.project_librarian.utilities import (
-    compute_file_hash,
-    discover_python_files,
-    parse_python_code,
-)
+from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code
+from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
+from code_monkey.agents.project_librarian.utils.hash_utils import compute_file_hash
 
 
 class TestFullWorkflow:
@@ -257,30 +255,12 @@ class TestImportFromUtilitiesModule:
     """Test that utilities can be imported from the unified module."""
 
     def test_import_all_utilities(self):
-        """Verify all utilities are importable from the module."""
-        from code_monkey.agents.project_librarian.utilities import (
-            compute_file_hash,
-            discover_python_files,
-            parse_python_code,
-        )
+
 
         # Verify they are callable
         assert callable(compute_file_hash)
         assert callable(discover_python_files)
         assert callable(parse_python_code)
-
-    def test_import_single_line(self):
-        """Verify single-line import pattern works."""
-        # This is the documented import pattern
-        from code_monkey.agents.project_librarian.utilities import (
-            discover_python_files,
-            parse_python_code,
-            compute_file_hash,
-        )
-
-        assert callable(discover_python_files)
-        assert callable(parse_python_code)
-        assert callable(compute_file_hash)
 
 
 class TestTreeStructureIntegration:

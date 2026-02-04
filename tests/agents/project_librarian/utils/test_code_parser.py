@@ -2,11 +2,7 @@
 
 import pytest
 
-from code_monkey.agents.project_librarian.utilities.code_parser import (
-    CodeNode,
-    ParsedCode,
-    parse_python_code,
-)
+from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code, ParsedCode, CodeNode
 
 
 class TestExtractsClassNames:

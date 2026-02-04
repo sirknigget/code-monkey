@@ -2,11 +2,7 @@
 
 from pathlib import Path
 
-import pytest
-
-from code_monkey.agents.project_librarian.utilities.file_discovery import (
-    discover_python_files,
-)
+from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
 
 
 class TestDiscoverPythonFiles:

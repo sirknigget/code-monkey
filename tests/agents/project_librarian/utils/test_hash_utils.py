@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from code_monkey.agents.project_librarian.utilities.hash_utils import compute_file_hash
+from code_monkey.agents.project_librarian.utils.hash_utils import compute_file_hash
 
 
 class TestComputeFileHash:
