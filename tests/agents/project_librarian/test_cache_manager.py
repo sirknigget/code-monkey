@@ -1,4 +1,4 @@
-"""Tests for CacheManager and data structures."""
+"""Tests for CacheManager and context models."""
 
 import json
 import tempfile
@@ -8,274 +8,279 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    CodeContext,
-    ModuleContext,
     FileContext,
+    ModuleContext,
+    module_context_from_dict,
 )
 
 
-class TestDataStructures:
-    """Tests for CodeContext, ModuleContext, FileContext structures."""
+@pytest.fixture
+def temp_root(tmp_path):
+    """Create a temporary root directory for cache operations."""
+    return tmp_path
 
-    def test_file_context_creation(self) -> None:
-        """Should create FileContext with summary."""
-        fc = FileContext(summary="test summary")
-        assert fc.summary == "test summary"
 
-    def test_module_context_creation(self) -> None:
-        """Should create ModuleContext with files and submodules."""
-        files = {"file1.py": FileContext(summary="file 1")}
-        submodules = {"submod": ModuleContext(summary="submod", files={}, submodules={})}
-        mc = ModuleContext(summary="module", files=files, submodules=submodules)
-        assert mc.summary == "module"
-        assert len(mc.files) == 1
-        assert len(mc.submodules) == 1
+@pytest.fixture
+def cache_manager(temp_root):
+    """Create a CacheManager instance with a temp directory."""
+    return CacheManager(temp_root)
 
-    def test_code_context_creation(self) -> None:
-        """Should create CodeContext with root_summary and modules."""
-        modules = {"pkg": ModuleContext(summary="pkg", files={}, submodules={})}
-        cc = CodeContext(root_summary="root", modules=modules)
-        assert cc.root_summary == "root"
-        assert "pkg" in cc.modules
 
-    def test_nested_hierarchy(self) -> None:
-        """Should support deeply nested hierarchies."""
-        deep = ModuleContext(
-            summary="deep",
-            files={},
-            submodules={
-                "level1": ModuleContext(
-                    summary="level1",
-                    files={},
-                    submodules={
-                        "level2": ModuleContext(
-                            summary="level2",
-                            files={},
-                            submodules={},
-                        )
-                    },
-                )
+class TestFileContext:
+    """Tests for FileContext dataclass."""
+
+    def test_init_with_summary(self):
+        """Test FileContext initialization with summary."""
+        ctx = FileContext(summary="Test file summary")
+        assert ctx.summary == "Test file summary"
+
+    def test_default_values(self):
+        """Test FileContext with default values."""
+        ctx = FileContext(summary="Minimal")
+        assert ctx.summary == "Minimal"
+
+
+class TestModuleContext:
+    """Tests for ModuleContext dataclass."""
+
+    def test_init_with_summary(self):
+        """Test ModuleContext initialization with summary."""
+        ctx = ModuleContext(summary="Test module summary")
+        assert ctx.summary == "Test module summary"
+        assert ctx.files == {}
+        assert ctx.submodules == {}
+
+    def test_with_files(self):
+        """Test ModuleContext with files dict."""
+        files = {"file1.py": FileContext(summary="File 1")}
+        ctx = ModuleContext(summary="Module", files=files)
+        assert len(ctx.files) == 1
+        assert "file1.py" in ctx.files
+
+    def test_with_submodules(self):
+        """Test ModuleContext with submodules dict."""
+        submodules = {
+            "subpkg": ModuleContext(summary="Submodule", files={})
+        }
+        ctx = ModuleContext(summary="Module", submodules=submodules)
+        assert "subpkg" in ctx.submodules
+
+    def test_nested_structure(self):
+        """Test deeply nested module structure."""
+        inner = ModuleContext(summary="Inner", files={})
+        outer = ModuleContext(summary="Outer", submodules={"inner": inner})
+        root = ModuleContext(summary="Root", submodules={"outer": outer})
+
+        assert root.submodules["outer"].submodules["inner"].summary == "Inner"
+
+
+class TestModuleContextFromDict:
+    """Tests for module_context_from_dict function."""
+
+    def test_empty_dict(self):
+        """Test loading from empty dict."""
+        ctx = module_context_from_dict({"summary": "Empty"})
+        assert ctx.summary == "Empty"
+        assert ctx.files == {}
+        assert ctx.submodules == {}
+
+    def test_with_files(self):
+        """Test loading with files from dict."""
+        data = {
+            "summary": "Module",
+            "files": {
+                "test.py": {"summary": "A test file"}
+            }
+        }
+        ctx = module_context_from_dict(data)
+        assert ctx.summary == "Module"
+        assert "test.py" in ctx.files
+        assert ctx.files["test.py"].summary == "A test file"
+
+    def test_nested_submodules(self):
+        """Test loading with nested submodules."""
+        data = {
+            "summary": "Root",
+            "submodules": {
+                "pkg": {
+                    "summary": "Package",
+                    "files": {
+                        "mod.py": {"summary": "Module file"}
+                    }
+                }
+            }
+        }
+        ctx = module_context_from_dict(data)
+        assert ctx.summary == "Root"
+        assert "pkg" in ctx.submodules
+        assert ctx.submodules["pkg"].summary == "Package"
+        assert "mod.py" in ctx.submodules["pkg"].files
+
+
+class TestCacheManagerHashes:
+    """Tests for CacheManager file hashes operations."""
+
+    def test_load_hashes_empty(self, cache_manager):
+        """Test load_hashes returns empty dict when no cache."""
+        hashes = cache_manager.load_hashes()
+        assert hashes == {}
+
+    def test_save_and_load_hashes(self, cache_manager):
+        """Test save_hashes and load_hashes roundtrip."""
+        test_hashes = {
+            "/path/to/file1.py": "abc123",
+            "/path/to/file2.py": "def456"
+        }
+        cache_manager.save_hashes(test_hashes)
+        loaded = cache_manager.load_hashes()
+        assert loaded == test_hashes
+
+    def test_hashes_persistence(self, temp_root):
+        """Test hashes persist across CacheManager instances."""
+        cm1 = CacheManager(temp_root)
+        cm1.save_hashes({"file.py": "hash123"})
+
+        cm2 = CacheManager(temp_root)
+        loaded = cm2.load_hashes()
+        assert loaded == {"file.py": "hash123"}
+
+    def test_load_hashes_corrupted_file(self, cache_manager):
+        """Test load_hashes handles corrupted file gracefully."""
+        cache_dir = cache_manager.cache_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        hashes_file = cache_dir / cache_manager.HASHES_FILENAME
+
+        # Write corrupted JSON
+        hashes_file.write_text("{ invalid json }")
+
+        with pytest.raises(Exception):
+            cache_manager.load_hashes()
+
+
+class TestCacheManagerCodeContext:
+    """Tests for CacheManager code context operations."""
+
+    def test_load_code_context_no_cache(self, cache_manager):
+        """Test load_code_context returns None when no cache."""
+        ctx = cache_manager.load_code_context()
+        assert ctx is None
+
+    def test_save_and_load_code_context(self, cache_manager):
+        """Test save_code_context and load_code_context roundtrip."""
+        ctx = ModuleContext(
+            summary="Root module",
+            files={
+                "main.py": FileContext(summary="Main entry")
             },
+            submodules={
+                "utils": ModuleContext(summary="Utilities")
+            }
         )
-        assert deep.submodules["level1"].submodules["level2"].summary == "level2"
+        cache_manager.save_code_context(ctx)
+        loaded = cache_manager.load_code_context()
+
+        assert loaded is not None
+        assert loaded.summary == "Root module"
+        assert "main.py" in loaded.files
+        assert loaded.files["main.py"].summary == "Main entry"
+        assert "utils" in loaded.submodules
+
+    def test_code_context_persistence(self, temp_root):
+        """Test code context persists across CacheManager instances."""
+        cm1 = CacheManager(temp_root)
+        original = ModuleContext(summary="Persisted module")
+        cm1.save_code_context(original)
+
+        cm2 = CacheManager(temp_root)
+        loaded = cm2.load_code_context()
+        assert loaded is not None
+        assert loaded.summary == "Persisted module"
+
+    def test_load_code_context_corrupted_file(self, cache_manager):
+        """Test load_code_context handles corrupted file gracefully."""
+        cache_dir = cache_manager.cache_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        ctx_file = cache_dir / cache_manager.CODE_CONTEXT_FILENAME
+
+        # Write corrupted JSON
+        ctx_file.write_text('{"summary": "ok", "files": { invalid }')
+
+        loaded = cache_manager.load_code_context()
+        assert loaded is None
 
 
-class TestCacheManagerInitialization:
-    """Tests for CacheManager initialization."""
+class TestCacheManagerProjectContext:
+    """Tests for CacheManager project context operations."""
 
-    def test_initializes_with_root_path(self, tmp_path: Path) -> None:
-        """Should initialize with correct root and cache directory."""
-        cache = CacheManager(tmp_path)
+    def test_load_project_context_no_cache(self, cache_manager):
+        """Test load_project_context returns None when no cache."""
+        ctx = cache_manager.load_project_context()
+        assert ctx is None
 
-        assert cache.root == tmp_path
-        assert cache.cache_dir == tmp_path / ".codemonkey"
+    def test_save_and_load_project_context(self, cache_manager):
+        """Test save_project_context and load_project_context roundtrip."""
+        content = "# Project Context\n\nThis is a test project."
+        cache_manager.save_project_context(content)
+        loaded = cache_manager.load_project_context()
+        assert loaded == content
 
-    def test_cache_dir_not_created_on_init(self, tmp_path: Path) -> None:
-        """Cache directory should not be created until needed."""
-        cache = CacheManager(tmp_path)
+    def test_project_context_persistence(self, temp_root):
+        """Test project context persists across CacheManager instances."""
+        cm1 = CacheManager(temp_root)
+        original = "## Project Title\n\nDescription here."
+        cm1.save_project_context(original)
 
-        assert not cache.cache_dir.exists()
-
-
-class TestHashCacheOperations:
-    """Tests for file hash cache operations."""
-
-    def test_load_hashes_returns_empty_when_missing(self, tmp_path: Path) -> None:
-        """Should return empty dict when hash file doesn't exist."""
-        cache = CacheManager(tmp_path)
-
-        result = cache.load_hashes()
-
-        assert result == {}
-
-    def test_load_hashes_returns_cached_data(self, tmp_path: Path) -> None:
-        """Should load and return cached hash data."""
-        cache = CacheManager(tmp_path)
-
-        # Save some hashes first
-        hashes = {"/path/to/file1.py": "abc123", "/path/to/file2.py": "def456"}
-        cache.save_hashes(hashes)
-
-        # Load them back
-        result = cache.load_hashes()
-
-        assert result == hashes
-
-    def test_save_hashes_creates_cache_dir(self, tmp_path: Path) -> None:
-        """Should create cache directory when saving."""
-        cache = CacheManager(tmp_path)
-
-        cache.save_hashes({"file.py": "hash"})
-
-        assert cache.cache_dir.exists()
-        assert (cache.cache_dir / CacheManager.HASHES_FILENAME).exists()
+        cm2 = CacheManager(temp_root)
+        loaded = cm2.load_project_context()
+        assert loaded == original
 
 
-class TestCodeContextOperations:
-    """Tests for CodeContext save/load operations."""
+class TestCacheManagerAtomicWrites:
+    """Tests for CacheManager atomic write behavior."""
 
-    def test_save_and_load_code_context(self, tmp_path: Path) -> None:
-        """Should save and load code context correctly."""
-        cache = CacheManager(tmp_path)
+    def test_atomic_json_write_creates_file(self, cache_manager):
+        """Test that atomic write creates the target file."""
+        test_data = {"key": "value"}
+        cache_manager._ensure_cache_dir()
 
-        # Create a context
-        files = {"main.py": FileContext(summary="main file")}
-        modules = {"pkg": ModuleContext(summary="pkg module", files=files, submodules={})}
-        ctx = CodeContext(root_summary="root", modules=modules)
+        target_path = cache_manager.cache_dir / "test_atomic.json"
+        cache_manager._atomic_json_write(target_path, test_data)
 
-        # Save and load
-        cache.save_code_context(ctx)
-        result = cache.load_code_context()
+        assert target_path.exists()
+        loaded = json.loads(target_path.read_text())
+        assert loaded == test_data
 
-        assert result is not None
-        assert result.root_summary == "root"
-        assert "pkg" in result.modules
-        assert result.modules["pkg"].summary == "pkg module"
-        assert "main.py" in result.modules["pkg"].files
-        assert result.modules["pkg"].files["main.py"].summary == "main file"
-
-    def test_load_code_context_returns_none_when_missing(self, tmp_path: Path) -> None:
-        """Should return None when context file doesn't exist."""
-        cache = CacheManager(tmp_path)
-
-        result = cache.load_code_context()
-
-        assert result is None
-
-    def test_nested_modules_roundtrip(self, tmp_path: Path) -> None:
-        """Should preserve nested module structure."""
-        cache = CacheManager(tmp_path)
-
-        # Create nested structure
-        inner = ModuleContext(summary="inner", files={}, submodules={})
-        outer = ModuleContext(summary="outer", files={}, submodules={"inner": inner})
-        ctx = CodeContext(root_summary="root", modules={"outer": outer})
-
-        # Roundtrip
-        cache.save_code_context(ctx)
-        result = cache.load_code_context()
-
-        assert result is not None
-        assert "outer" in result.modules
-        assert "inner" in result.modules["outer"].submodules
-        assert result.modules["outer"].submodules["inner"].summary == "inner"
-
-    def test_empty_context_roundtrip(self, tmp_path: Path) -> None:
-        """Should handle empty context."""
-        cache = CacheManager(tmp_path)
-
-        ctx = CodeContext(root_summary="", modules={})
-        cache.save_code_context(ctx)
-        result = cache.load_code_context()
-
-        assert result is not None
-        assert result.root_summary == ""
-        assert len(result.modules) == 0
-
-    def test_multiple_files_in_module(self, tmp_path: Path) -> None:
-        """Should handle multiple files in a module."""
-        cache = CacheManager(tmp_path)
-
-        files = {
-            "file1.py": FileContext(summary="summary 1"),
-            "file2.py": FileContext(summary="summary 2"),
-            "file3.py": FileContext(summary="summary 3"),
-        }
-        modules = {"pkg": ModuleContext(summary="pkg", files=files, submodules={})}
-        ctx = CodeContext(root_summary="root", modules=modules)
-
-        cache.save_code_context(ctx)
-        result = cache.load_code_context()
-
-        assert result is not None
-        pkg_files = result.modules["pkg"].files
-        assert len(pkg_files) == 3
-        assert pkg_files["file1.py"].summary == "summary 1"
-        assert pkg_files["file2.py"].summary == "summary 2"
-        assert pkg_files["file3.py"].summary == "summary 3"
+    def test_cache_dir_creation(self, cache_manager):
+        """Test that cache directory is created on first operation."""
+        assert not cache_manager.cache_dir.exists()
+        cache_manager._ensure_cache_dir()
+        assert cache_manager.cache_dir.exists()
 
 
-class TestProjectContextOperations:
-    """Tests for project context cache operations."""
+class TestCacheManagerIntegration:
+    """Integration tests for CacheManager."""
 
-    def test_save_and_load_project_context(self, tmp_path: Path) -> None:
-        """Should save and load project context correctly."""
-        cache = CacheManager(tmp_path)
+    def test_all_operations_together(self, temp_root):
+        """Test all CacheManager operations in sequence."""
+        cm = CacheManager(temp_root)
 
-        context = "project structure overview..."
+        # Save hashes
+        cm.save_hashes({"file.py": "hash123"})
 
-        # Save and load
-        cache.save_project_context(context)
-        result = cache.load_project_context()
+        # Save code context
+        code_ctx = ModuleContext(summary="Module", files={})
+        cm.save_code_context(code_ctx)
 
-        assert result == context
+        # Save project context
+        cm.save_project_context("Project context")
 
-    def test_load_project_context_returns_none_when_missing(self, tmp_path: Path) -> None:
-        """Should return None when project context doesn't exist."""
-        cache = CacheManager(tmp_path)
+        # Load and verify all
+        hashes = cm.load_hashes()
+        assert hashes == {"file.py": "hash123"}
 
-        result = cache.load_project_context()
+        loaded_code_ctx = cm.load_code_context()
+        assert loaded_code_ctx is not None
+        assert loaded_code_ctx.summary == "Module"
 
-        assert result is None
-
-
-class TestCacheManagerEdgeCases:
-    """Tests for edge cases and error handling."""
-
-    def test_ensure_cache_dir_idempotent(self, tmp_path: Path) -> None:
-        """Calling _ensure_cache_dir multiple times should not error."""
-        cache = CacheManager(tmp_path)
-
-        cache._ensure_cache_dir()
-        cache._ensure_cache_dir()
-        cache._ensure_cache_dir()
-
-        assert cache.cache_dir.exists()
-
-    def test_save_code_context_creates_json_structure(self, tmp_path: Path) -> None:
-        """Should save context in JSON format."""
-        cache = CacheManager(tmp_path)
-
-        files = {"test.py": FileContext(summary="test")}
-        modules = {"pkg": ModuleContext(summary="pkg", files=files, submodules={})}
-        ctx = CodeContext(root_summary="root", modules=modules)
-        cache.save_code_context(ctx)
-
-        context_file = cache.cache_dir / CacheManager.CODE_CONTEXT_FILENAME
-        with open(context_file) as f:
-            data = json.load(f)
-
-        assert "root_summary" in data
-        assert "modules" in data
-        assert data["root_summary"] == "root"
-
-    def test_load_code_context_handles_corrupt_file(self, tmp_path: Path) -> None:
-        """Should return None when context file is corrupt."""
-        cache = CacheManager(tmp_path)
-
-        # Create corrupt JSON file
-        cache_dir = tmp_path / ".codemonkey"
-        cache_dir.mkdir()
-        context_file = cache_dir / CacheManager.CODE_CONTEXT_FILENAME
-        context_file.write_text("{invalid json}")
-
-        result = cache.load_code_context()
-
-        assert result is None
-
-    def test_multiple_hashes_saves_correctly(self, tmp_path: Path) -> None:
-        """Should handle multiple file hashes correctly."""
-        cache = CacheManager(tmp_path)
-
-        hashes = {
-            "/path/file1.py": "hash1",
-            "/path/file2.py": "hash2",
-            "/path/file3.py": "hash3",
-        }
-        cache.save_hashes(hashes)
-
-        result = cache.load_hashes()
-        assert len(result) == 3
-        assert result["/path/file1.py"] == "hash1"
-        assert result["/path/file2.py"] == "hash2"
-        assert result["/path/file3.py"] == "hash3"
+        loaded_proj_ctx = cm.load_project_context()
+        assert loaded_proj_ctx == "Project context"
