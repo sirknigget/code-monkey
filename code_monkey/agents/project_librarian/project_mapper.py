@@ -15,7 +15,6 @@ from langchain_core.language_models import BaseChatModel
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    CodeContext,
     FileContext,
     ModuleContext,
 )
@@ -36,7 +35,7 @@ class ProjectMapperResult:
 
     def __init__(
         self,
-        code_context: CodeContext,
+        code_context: ModuleContext,
         project_context: str,
     ) -> None:
         """Initialize result container.
@@ -50,7 +49,7 @@ class ProjectMapperResult:
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"ProjectMapperResult(modules={len(self.code_context.modules)})"
+        return f"ProjectMapperResult(modules={len(self.code_context.submodules)})"
 
 
 class ProjectMapper:
@@ -121,90 +120,104 @@ class ProjectMapper:
 
     def _get_module(
         self,
-        ctx: CodeContext,
+        ctx: ModuleContext,
         module_path: tuple[str, ...],
     ) -> ModuleContext | None:
         """Get a module from the context by path.
 
         Args:
-            ctx: CodeContext to search.
+            ctx: ModuleContext to search.
             module_path: Tuple of module names from root.
 
         Returns:
             ModuleContext or None if not found.
         """
-        modules = ctx.modules
+        modules = ctx.submodules
         for name in module_path:
             if name not in modules:
                 return None
+            if name == module_path[-1]:
+                return modules[name]
             modules = modules[name].submodules
-        # If module_path is empty, we need the root, but this is handled specially
         return None
 
     def _set_module(
         self,
-        ctx: CodeContext,
+        ctx: ModuleContext,
         module_path: tuple[str, ...],
         module: ModuleContext,
-    ) -> CodeContext:
+    ) -> ModuleContext:
         """Set a module in the context, creating parents as needed.
 
         Args:
-            ctx: Current CodeContext.
+            ctx: Current ModuleContext.
             module_path: Tuple of module names from root.
             module: ModuleContext to set.
 
         Returns:
-            New CodeContext with module set.
+            New ModuleContext with module set.
         """
         if not module_path:
             # Setting root_summary
-            return CodeContext(root_summary=module.summary, modules=ctx.modules)
+            return ModuleContext(
+                root_summary=module.summary,
+                summary="",
+                files={},
+                submodules=ctx.submodules
+            )
 
-        # Clone the modules dict and create path
-        new_modules: dict[str, ModuleContext] = {}
-        for name, mod in ctx.modules.items():
-            new_modules[name] = ModuleContext(
+        # Clone the submodules dict and create path
+        new_submodules: dict[str, ModuleContext] = {}
+        for name, mod in ctx.submodules.items():
+            new_submodules[name] = ModuleContext(
+                root_summary=mod.root_summary,
                 summary=mod.summary,
                 files=dict(mod.files),
                 submodules=dict(mod.submodules),
             )
 
-        current = new_modules
+        current = new_submodules
         for i, name in enumerate(module_path[:-1]):
             if name not in current:
                 # Create missing parent
                 current[name] = ModuleContext(
+                    root_summary="",
                     summary="",
                     files={},
                     submodules={},
                 )
             parent = current[name]
-            new_submodules: dict[str, ModuleContext] = {}
+            new_inner_submodules: dict[str, ModuleContext] = {}
             for subname, submod in parent.submodules.items():
-                new_submodules[subname] = ModuleContext(
+                new_inner_submodules[subname] = ModuleContext(
+                    root_summary=submod.root_summary,
                     summary=submod.summary,
                     files=dict(submod.files),
                     submodules=dict(submod.submodules),
                 )
-            current = new_submodules
+            current = new_inner_submodules
 
         # Set the final module
         final_name = module_path[-1]
         current[final_name] = module
 
-        return CodeContext(root_summary=ctx.root_summary, modules=new_modules)
+        return ModuleContext(
+            root_summary=ctx.root_summary,
+            summary="",
+            files={},
+            submodules=new_submodules
+        )
 
     def _process_file(
         self,
         filepath: Path,
-        existing_context: CodeContext | None,
+        existing_context: ModuleContext | None,
     ) -> FileContext:
         """Process a single file and return its context.
 
         Args:
             filepath: Path to the Python file.
-            existing_context: Existing CodeContext if available.
+            existing_context: Existing ModuleContext if available.
 
         Returns:
             FileContext with summary.
@@ -229,14 +242,14 @@ class ProjectMapper:
     def _process_directory(
         self,
         directory: Path,
-        code_context: CodeContext | None,
+        code_context: ModuleContext | None,
         changed_files: set[Path],
     ) -> tuple[ModuleContext, bool]:
         """Process a directory and return its module context.
 
         Args:
             directory: Directory to process.
-            code_context: Existing CodeContext if available.
+            code_context: Existing ModuleContext if available.
             changed_files: Set of files that have changed.
 
         Returns:
@@ -316,7 +329,7 @@ class ProjectMapper:
         # Progress points: 1 (initial scan) + N (directory processing) + 1 (project context)
         yield TaskResult(
             result=ProjectMapperResult(
-                code_context=CodeContext(root_summary="", modules={}),
+                code_context=ModuleContext(root_summary="", summary="", files={}, submodules={}),
                 project_context="",
             ),
             progress=0,
@@ -326,12 +339,14 @@ class ProjectMapper:
         # Load cached hashes
         cached_hashes = self._cache.load_hashes()
 
+        # Initialize changed_files for _process_directory calls
+        changed_files: set[Path] = set()
+
         if changed_dirs is None:
             # Full scan: compute all hashes and find changed files
             current_hashes = self._compute_file_hashes()
 
             # Find files that have changed or are new
-            changed_files: set[Path] = set()
             for filepath, current_hash in current_hashes.items():
                 abs_path = Path(filepath)
                 cached_hash = cached_hashes.get(filepath)
@@ -376,7 +391,7 @@ class ProjectMapper:
         # Mark initial scan complete
         yield TaskResult(
             result=ProjectMapperResult(
-                code_context=CodeContext(root_summary="", modules={}),
+                code_context=ModuleContext(root_summary="", summary="", files={}, submodules={}),
                 project_context="",
             ),
             progress=1,
@@ -390,7 +405,7 @@ class ProjectMapper:
 
         # Copy existing context for modification
         if existing_context is None:
-            current_context = CodeContext(root_summary="", modules={})
+            current_context = ModuleContext(root_summary="", summary="", files={}, submodules={})
         else:
             current_context = existing_context
 
@@ -418,9 +433,11 @@ class ProjectMapper:
             root_summary = self._summarizer.summarize_project(
                 current_context, project_name=self.root.name
             )
-            current_context = CodeContext(
+            current_context = ModuleContext(
                 root_summary=root_summary,
-                modules=current_context.modules,
+                summary="",
+                files={},
+                submodules=current_context.submodules,
             )
             root_updated = True
 
