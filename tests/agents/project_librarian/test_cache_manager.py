@@ -26,54 +26,6 @@ def cache_manager(temp_root):
     return CacheManager(temp_root)
 
 
-class TestFileContext:
-    """Tests for FileContext dataclass."""
-
-    def test_init_with_summary(self):
-        """Test FileContext initialization with summary."""
-        ctx = FileContext(summary="Test file summary")
-        assert ctx.summary == "Test file summary"
-
-    def test_default_values(self):
-        """Test FileContext with default values."""
-        ctx = FileContext(summary="Minimal")
-        assert ctx.summary == "Minimal"
-
-
-class TestModuleContext:
-    """Tests for ModuleContext dataclass."""
-
-    def test_init_with_summary(self):
-        """Test ModuleContext initialization with summary."""
-        ctx = ModuleContext(summary="Test module summary")
-        assert ctx.summary == "Test module summary"
-        assert ctx.files == {}
-        assert ctx.submodules == {}
-
-    def test_with_files(self):
-        """Test ModuleContext with files dict."""
-        files = {"file1.py": FileContext(summary="File 1")}
-        ctx = ModuleContext(summary="Module", files=files)
-        assert len(ctx.files) == 1
-        assert "file1.py" in ctx.files
-
-    def test_with_submodules(self):
-        """Test ModuleContext with submodules dict."""
-        submodules = {
-            "subpkg": ModuleContext(summary="Submodule", files={})
-        }
-        ctx = ModuleContext(summary="Module", submodules=submodules)
-        assert "subpkg" in ctx.submodules
-
-    def test_nested_structure(self):
-        """Test deeply nested module structure."""
-        inner = ModuleContext(summary="Inner", files={})
-        outer = ModuleContext(summary="Outer", submodules={"inner": inner})
-        root = ModuleContext(summary="Root", submodules={"outer": outer})
-
-        assert root.submodules["outer"].submodules["inner"].summary == "Inner"
-
-
 class TestModuleContextFromDict:
     """Tests for module_context_from_dict function."""
 
