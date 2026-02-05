@@ -15,10 +15,6 @@ import pytest
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-@pytest.fixture(scope="session", autouse=True)
-def load_env():
-    dotenv.load_dotenv(override=True)
-
 # Path to the mock project root
 MOCK_PROJECT_ROOT = "mock_project"
 MOCK_PROJECT_NAME = "crewai_trading_strategy"
