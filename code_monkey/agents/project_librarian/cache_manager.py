@@ -19,18 +19,12 @@ class FileContext(NamedTuple):
 
 
 class ModuleContext(NamedTuple):
-    """A module in the code hierarchy."""
+    """A module in the code hierarchy (also serves as root context)."""
 
+    root_summary: str
     summary: str
     files: dict[str, FileContext]
     submodules: dict[str, "ModuleContext"]
-
-
-class CodeContext(NamedTuple):
-    """Root code context containing the modules hierarchy."""
-
-    root_summary: str
-    modules: dict[str, ModuleContext]
 
 
 class CacheManager:
@@ -39,6 +33,8 @@ class CacheManager:
     HASHES_FILENAME = "file_hashes.json"
     CODE_CONTEXT_FILENAME = "code_context.json"
     PROJECT_CONTEXT_FILENAME = "project_context.json"
+    FILE_SUFFIX = ".summary"
+    MODULE_SUFFIX = ".module_summary"
 
     def __init__(self, root: Path) -> None:
         """Initialize cache manager for the given root directory.
@@ -86,8 +82,8 @@ class CacheManager:
             tmp_path = tmp.name
         Path(tmp_path).rename(hashes_file)
 
-    def _context_to_dict(self, ctx: CodeContext) -> dict:
-        """Convert CodeContext to serializable dict."""
+    def _context_to_dict(self, ctx: ModuleContext) -> dict:
+        """Convert ModuleContext to serializable dict."""
         def module_to_dict(module: ModuleContext) -> dict:
             return {
                 "summary": module.summary,
@@ -103,12 +99,12 @@ class CacheManager:
         return {
             "root_summary": ctx.root_summary,
             "modules": {
-                name: module_to_dict(m) for name, m in ctx.modules.items()
+                name: module_to_dict(m) for name, m in ctx.submodules.items()
             }
         }
 
-    def _dict_to_context(self, data: dict) -> CodeContext:
-        """Convert dict to CodeContext."""
+    def _dict_to_context(self, data: dict) -> ModuleContext:
+        """Convert dict to ModuleContext."""
         def dict_to_module(data: dict) -> ModuleContext:
             files = {}
             for name, file_data in data.get("files", {}).items():
@@ -117,23 +113,26 @@ class CacheManager:
             for name, sub_data in data.get("submodules", {}).items():
                 submodules[name] = dict_to_module(sub_data)
             return ModuleContext(
+                root_summary="",
                 summary=data["summary"],
                 files=files,
                 submodules=submodules
             )
-        modules = {}
+        submodules = {}
         for name, module_data in data.get("modules", {}).items():
-            modules[name] = dict_to_module(module_data)
-        return CodeContext(
+            submodules[name] = dict_to_module(module_data)
+        return ModuleContext(
             root_summary=data.get("root_summary", ""),
-            modules=modules
+            summary="",  # Root module has empty summary, only root_summary used
+            files={},
+            submodules=submodules
         )
 
-    def save_code_context(self, ctx: CodeContext) -> None:
+    def save_code_context(self, ctx: ModuleContext) -> None:
         """Atomically save code context to cache.
 
         Args:
-            ctx: CodeContext containing modules hierarchy.
+            ctx: ModuleContext containing modules hierarchy.
         """
         self._ensure_cache_dir()
         context_file = self.cache_dir / self.CODE_CONTEXT_FILENAME
@@ -144,11 +143,11 @@ class CacheManager:
             tmp_path = tmp.name
         Path(tmp_path).rename(context_file)
 
-    def load_code_context(self) -> CodeContext | None:
+    def load_code_context(self) -> ModuleContext | None:
         """Load code context from cache.
 
         Returns:
-            CodeContext or None if not cached.
+            ModuleContext or None if not cached.
         """
         context_file = self.cache_dir / self.CODE_CONTEXT_FILENAME
         if not context_file.exists():
@@ -191,5 +190,96 @@ class CacheManager:
         except (json.JSONDecodeError, OSError, KeyError):
             return None
 
+    def _get_summary_path(self, filepath: Path) -> Path:
+        """Get the cache file path for a file summary.
 
-__all__ = ["CacheManager", "CodeContext", "ModuleContext", "FileContext"]
+        Args:
+            filepath: Absolute path to the file.
+
+        Returns:
+            Path to the summary cache file.
+        """
+        # Use absolute path as key, normalized
+        key = str(filepath.resolve())
+        return self.cache_dir / f"{hash(key)}{self.FILE_SUFFIX}"
+
+    def save_file_summary(self, filepath: Path, summary: str) -> None:
+        """Save a file summary to cache.
+
+        Args:
+            filepath: Absolute path to the file.
+            summary: Summary string to cache.
+        """
+        self._ensure_cache_dir()
+        summary_file = self._get_summary_path(filepath)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", dir=self.cache_dir, delete=False
+        ) as tmp:
+            tmp.write(summary)
+            tmp_path = tmp.name
+        Path(tmp_path).rename(summary_file)
+
+    def load_file_summary(self, filepath: Path) -> str | None:
+        """Load a file summary from cache.
+
+        Args:
+            filepath: Absolute path to the file.
+
+        Returns:
+            Summary string or None if not cached.
+        """
+        summary_file = self._get_summary_path(filepath)
+        if not summary_file.exists():
+            return None
+        try:
+            return summary_file.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def _get_module_summary_path(self, directory: Path) -> Path:
+        """Get the cache file path for a module summary.
+
+        Args:
+            directory: Absolute path to the directory.
+
+        Returns:
+            Path to the module summary cache file.
+        """
+        key = str(directory.resolve())
+        return self.cache_dir / f"{hash(key)}{self.MODULE_SUFFIX}"
+
+    def save_module_summary(self, directory: Path, summary: str) -> None:
+        """Save a module summary to cache.
+
+        Args:
+            directory: Absolute path to the directory.
+            summary: Summary string to cache.
+        """
+        self._ensure_cache_dir()
+        summary_file = self._get_module_summary_path(directory)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", dir=self.cache_dir, delete=False
+        ) as tmp:
+            tmp.write(summary)
+            tmp_path = tmp.name
+        Path(tmp_path).rename(summary_file)
+
+    def load_module_summary(self, directory: Path) -> str | None:
+        """Load a module summary from cache.
+
+        Args:
+            directory: Absolute path to the directory.
+
+        Returns:
+            Summary string or None if not cached.
+        """
+        summary_file = self._get_module_summary_path(directory)
+        if not summary_file.exists():
+            return None
+        try:
+            return summary_file.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+
+__all__ = ["CacheManager", "ModuleContext", "FileContext"]
