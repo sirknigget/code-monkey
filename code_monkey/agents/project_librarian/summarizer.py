@@ -9,7 +9,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 
 from code_monkey.agents.project_librarian.cache_manager import (
-    CodeContext,
     ModuleContext,
 )
 
@@ -207,7 +206,7 @@ Project Structure:
 
     def summarize_project(
         self,
-        code_context: CodeContext,
+        code_context: ModuleContext,
         project_name: str = "project",
     ) -> str:
         """Generate root summary from code context.
@@ -230,7 +229,7 @@ Project Structure:
                 summary_parts.append((current_path, module.summary))
                 collect_summaries(module.submodules, current_path)
 
-        collect_summaries(code_context.modules, ())
+        collect_summaries(code_context.submodules, ())
 
         # Format for LLM
         formatted = []
@@ -250,7 +249,7 @@ Project Structure:
 
     def generate_project_context(
         self,
-        code_context: CodeContext | dict[Path, str],
+        code_context: ModuleContext | dict[Path, str],
         project_name: str = "project",
     ) -> str:
         """Generate project-wide context using indentation tree format.
@@ -262,8 +261,8 @@ Project Structure:
         Returns:
             Project context string in indentation tree format.
         """
-        # Handle both CodeContext and legacy dict format
-        if isinstance(code_context, CodeContext):
+        # Handle both ModuleContext and legacy dict format
+        if isinstance(code_context, ModuleContext):
             # Collect all module summaries recursively
             summary_parts: list[tuple[tuple[str, ...], str]] = []
 
@@ -275,7 +274,7 @@ Project Structure:
                     summary_parts.append((current_path, module.summary))
                     collect_summaries(module.submodules, current_path)
 
-            collect_summaries(code_context.modules, ())
+            collect_summaries(code_context.submodules, ())
 
             # Format for LLM
             formatted = []
