@@ -110,7 +110,10 @@ class ProjectMapper:
         for filename, file_ctx in module.files.items():
             filepath = current_dir / filename
             if file_ctx.summary is None:
-                code = filepath.read_text(encoding="utf-8")
+                try:
+                    code = filepath.read_text(encoding="utf-8")
+                except OSError:
+                    continue
                 file_ctx.summary = self.summarizer.summarize_file(filepath, code)
             file_infos.append(
                 Summarizer.FileInfo(filepath=filepath, summary=file_ctx.summary)
