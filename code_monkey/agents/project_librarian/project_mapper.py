@@ -422,7 +422,6 @@ class ProjectMapper:
             )
 
         # Update root summary if any changes
-        root_updated = False
         if all_module_contexts:
             # Generate new root summary
             root_summary = self._summarizer.summarize_project(
@@ -433,7 +432,6 @@ class ProjectMapper:
                 files={},
                 submodules=current_context.submodules,
             )
-            root_updated = True
 
         # Save code context
         self._cache.save_code_context(current_context)
