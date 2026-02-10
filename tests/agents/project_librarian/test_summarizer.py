@@ -1,348 +1,326 @@
-"""Tests for Summarizer class."""
+"""Tests for the Summarizer class."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.language_models import BaseChatModel
 
+from code_monkey.agents.project_librarian.cache_manager import ModuleContext
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 
 
-class TestSummarizerInitialization:
+@pytest.fixture
+def mock_llm():
+    """Create a mock BaseChatModel that supports with_retry."""
+    llm = MagicMock(spec=BaseChatModel)
+    llm.with_retry.return_value = llm
+    return llm
+
+
+@pytest.fixture
+def summarizer(mock_llm):
+    """Create a Summarizer instance with mock LLM and mocked chains."""
+    s = Summarizer(mock_llm)
+    # Replace chains with controllable mocks after construction
+    s._file_chain = MagicMock()
+    s._file_chain.invoke.return_value = "File summary"
+    s._module_chain = MagicMock()
+    s._module_chain.invoke.return_value = "Module summary"
+    s._project_chain = MagicMock()
+    s._project_chain.invoke.return_value = "Project summary"
+    return s
+
+
+class TestSummarizerInit:
     """Tests for Summarizer initialization."""
 
-    def test_initializes_with_llm(self) -> None:
-        """Should initialize with provided LLM."""
-        mock_llm = MagicMock()
-        summarizer = Summarizer(mock_llm)
+    def test_wraps_llm_with_retry(self, mock_llm):
+        """Test that __init__ wraps the LLM with retry behavior."""
+        Summarizer(mock_llm)
+        mock_llm.with_retry.assert_called_once_with(stop_after_attempt=Summarizer.MAX_RETRIES)
 
-        assert summarizer.llm == mock_llm
+    def test_creates_file_chain(self, mock_llm):
+        """Test that __init__ creates the file summary chain."""
+        s = Summarizer(mock_llm)
+        assert s._file_chain is not None
 
-    def test_creates_file_summary_chain(self) -> None:
-        """Should create file summary chain on init."""
-        mock_llm = MagicMock()
-        summarizer = Summarizer(mock_llm)
+    def test_creates_module_chain(self, mock_llm):
+        """Test that __init__ creates the module summary chain."""
+        s = Summarizer(mock_llm)
+        assert s._module_chain is not None
 
-        assert summarizer._file_chain is not None
-        assert summarizer._module_chain is not None
-        assert summarizer._project_chain is not None
+    def test_creates_project_chain(self, mock_llm):
+        """Test that __init__ creates the project summary chain."""
+        s = Summarizer(mock_llm)
+        assert s._project_chain is not None
 
-    def test_max_summary_lines_default(self) -> None:
-        """Should have correct default MAX_SUMMARY_LINES."""
-        assert Summarizer.MAX_SUMMARY_LINES == 10
-
-    def test_max_retries_default(self) -> None:
-        """Should have correct default MAX_RETRIES."""
+    def test_max_retries_constant(self):
+        """Test MAX_RETRIES is set to expected value."""
         assert Summarizer.MAX_RETRIES == 3
-
-    def test_backoff_base_default(self) -> None:
-        """Should have correct default BACKOFF_BASE."""
-        assert Summarizer.BACKOFF_BASE == 2.0
-
-    def test_initial_delay_default(self) -> None:
-        """Should have correct default INITIAL_DELAY."""
-        assert Summarizer.INITIAL_DELAY == 1.0
 
 
 class TestSummarizeFile:
-    """Tests for file summarization."""
+    """Tests for Summarizer.summarize_file."""
 
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_file_returns_summary(self, mock_parser, mock_template) -> None:
-        """Should return summary from LLM."""
-        mock_llm = MagicMock()
-        expected_summary = "File summary text"
+    def test_passes_filepath_to_chain(self, summarizer):
+        """Test that summarize_file passes correct filepath to chain."""
+        summarizer.summarize_file(Path("/test/file.py"), "def foo(): pass")
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert call_args["filepath"] == "/test/file.py"
 
-        # Setup the chain mock
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = expected_summary
-        mock_template.from_template.return_value = mock_chain
-        mock_chain.__or__ = MagicMock(return_value=mock_chain)
+    def test_passes_code_to_chain(self, summarizer):
+        """Test that summarize_file passes correct code to chain."""
+        code = "def foo(): return 42"
+        summarizer.summarize_file(Path("/test/file.py"), code)
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert call_args["code"] == code
 
-        summarizer = Summarizer(mock_llm)
-        # Directly mock the internal chain's invoke
-        summarizer._file_chain = mock_chain
+    def test_default_parent_context_is_none_string(self, summarizer):
+        """Test that default parent_context is '(none)' when None passed."""
+        summarizer.summarize_file(Path("/test/file.py"), "code")
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert call_args["parent_context"] == "(none)"
 
-        result = summarizer.summarize_file(
-            filepath=Path("test.py"),
-            structure="class Test:\n    pass",
-        )
+    def test_passes_explicit_parent_context(self, summarizer):
+        """Test that explicit parent_context is passed through."""
+        summarizer.summarize_file(Path("/test/file.py"), "code", parent_context="Module context")
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert call_args["parent_context"] == "Module context"
 
-        assert result == expected_summary
+    def test_passes_max_lines_to_chain(self, summarizer):
+        """Test that summarize_file passes MAX_FILE_SUMMARY_LINES to chain."""
+        summarizer.summarize_file(Path("/test/file.py"), "code")
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert call_args["max_lines"] == Summarizer.MAX_FILE_SUMMARY_LINES
 
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_file_calls_chain(self, mock_parser, mock_template) -> None:
-        """Should call chain with input."""
-        mock_llm = MagicMock()
-        expected_summary = "summary"
+    def test_output_is_stripped(self, summarizer):
+        """Test that the returned summary has whitespace stripped."""
+        summarizer._file_chain.invoke.return_value = "  Summary with spaces  "
+        result = summarizer.summarize_file(Path("/test/file.py"), "code")
+        assert result == "Summary with spaces"
 
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = expected_summary
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        result = summarizer.summarize_file(
-            filepath=Path("test.py"),
-            structure="structure here",
-        )
-
-        assert result == expected_summary
-        mock_chain.invoke.assert_called()
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_file_truncates_long_output(self, mock_parser, mock_template) -> None:
-        """Should truncate output to MAX_SUMMARY_LINES."""
-        mock_llm = MagicMock()
-        # Return many lines
-        long_output = "\n".join([f"line {i}" for i in range(20)])
-
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = long_output
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        result = summarizer.summarize_file(
-            filepath=Path("test.py"),
-            structure="structure",
-        )
-
-        lines = result.split("\n")
-        assert len(lines) <= Summarizer.MAX_SUMMARY_LINES
+    def test_filepath_converted_to_string(self, summarizer):
+        """Test that Path is converted to string for the chain."""
+        summarizer.summarize_file(Path("/some/deep/path/module.py"), "code")
+        call_args = summarizer._file_chain.invoke.call_args[0][0]
+        assert isinstance(call_args["filepath"], str)
+        assert call_args["filepath"] == "/some/deep/path/module.py"
 
 
 class TestSummarizeModule:
-    """Tests for module summarization."""
+    """Tests for Summarizer.summarize_module."""
 
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_module_returns_summary(self, mock_parser, mock_template) -> None:
-        """Should return module summary."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "Module summary"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._module_chain = mock_chain
-
-        result = summarizer.summarize_module(
-            directory=Path("/path/to/module"),
-            file_summaries=["file1 summary", "file2 summary"],
+    def test_passes_module_path_to_chain(self, summarizer):
+        """Test that summarize_module passes correct module_path."""
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/utils/helper.py"),
+            summary="Helper utilities",
+            structure="def helper(): ...",
         )
+        summarizer.summarize_module(Path("/project/utils"), [file_info])
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        assert call_args["module_path"] == "/project/utils"
 
+    def test_passes_default_parent_context(self, summarizer):
+        """Test that default parent_context is '(none)' for module."""
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/mod.py"),
+            summary="A module",
+            structure="class Foo: ...",
+        )
+        summarizer.summarize_module(Path("/project"), [file_info])
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        assert call_args["parent_context"] == "(none)"
+
+    def test_passes_explicit_parent_context(self, summarizer):
+        """Test that explicit parent_context is passed through."""
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/mod.py"),
+            summary="A module",
+            structure="class Foo: ...",
+        )
+        summarizer.summarize_module(Path("/project"), [file_info], parent_context="Root context")
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        assert call_args["parent_context"] == "Root context"
+
+    def test_passes_max_lines_to_chain(self, summarizer):
+        """Test that summarize_module passes MAX_MODULE_SUMMARY_LINES."""
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/mod.py"),
+            summary="A module",
+            structure="def func(): ...",
+        )
+        summarizer.summarize_module(Path("/project"), [file_info])
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        assert call_args["max_lines"] == Summarizer.MAX_MODULE_SUMMARY_LINES
+
+    def test_formats_multiple_file_infos_with_separator(self, summarizer):
+        """Test that multiple FileInfo entries are joined with '---' separator."""
+        file_infos = [
+            Summarizer.FileInfo(
+                filepath=Path("/project/a.py"),
+                summary="File A summary",
+                structure="class A: ...",
+            ),
+            Summarizer.FileInfo(
+                filepath=Path("/project/b.py"),
+                summary="File B summary",
+                structure="class B: ...",
+            ),
+        ]
+        summarizer.summarize_module(Path("/project"), file_infos)
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        file_summaries = call_args["file_summaries"]
+        assert "---" in file_summaries
+
+    def test_file_info_filename_appears_in_summaries(self, summarizer):
+        """Test that file names appear in the formatted summaries string."""
+        file_infos = [
+            Summarizer.FileInfo(
+                filepath=Path("/project/utils.py"),
+                summary="Utility functions",
+                structure="def helper(): ...",
+            ),
+        ]
+        summarizer.summarize_module(Path("/project"), file_infos)
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        file_summaries = call_args["file_summaries"]
+        assert "utils.py" in file_summaries
+
+    def test_empty_file_infos_produces_empty_summaries(self, summarizer):
+        """Test that empty file_infos produces an empty file_summaries string."""
+        summarizer.summarize_module(Path("/project"), [])
+        call_args = summarizer._module_chain.invoke.call_args[0][0]
+        assert call_args["file_summaries"] == ""
+
+    def test_output_is_stripped(self, summarizer):
+        """Test that the module summary result is stripped."""
+        summarizer._module_chain.invoke.return_value = "\n  Module summary  \n"
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/mod.py"),
+            summary="A module",
+            structure="def func(): ...",
+        )
+        result = summarizer.summarize_module(Path("/project"), [file_info])
         assert result == "Module summary"
 
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_module_with_empty_file_list(self, mock_parser, mock_template) -> None:
-        """Should handle empty file summaries list."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "summary"
 
-        summarizer = Summarizer(mock_llm)
-        summarizer._module_chain = mock_chain
+class TestModuleSummariesFromCodeContext:
+    """Tests for Summarizer._module_summaries_from_code_context."""
 
-        result = summarizer.summarize_module(
-            directory=Path("/empty/module"),
-            file_summaries=[],
+    def test_root_module_uses_empty_string_as_path(self, summarizer):
+        """Test that root module path is empty string."""
+        ctx = ModuleContext(summary="Root summary")
+        summaries = summarizer._module_summaries_from_code_context(ctx)
+        assert len(summaries) >= 1
+        assert summaries[0][0] == ""
+        assert summaries[0][1] == "Root summary"
+
+    def test_single_submodule_path(self, summarizer):
+        """Test that a single submodule builds a correct path."""
+        ctx = ModuleContext(
+            summary="Root",
+            submodules={
+                "utils": ModuleContext(summary="Utils module"),
+            },
         )
+        summaries = summarizer._module_summaries_from_code_context(ctx)
+        paths = {path for path, _ in summaries}
+        assert "utils" in paths
 
-        assert result == "summary"
-
-
-class TestGenerateProjectContext:
-    """Tests for project context generation."""
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_generate_project_context_returns_string(self, mock_parser, mock_template) -> None:
-        """Should return project context string."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "project context"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._project_chain = mock_chain
-
-        result = summarizer.generate_project_context(
-            module_summaries={Path("/src"): "src module"},
-            project_name="test_project",
+    def test_nested_submodule_path(self, summarizer):
+        """Test that nested submodules build correct paths (e.g., 'pkg/subpkg')."""
+        ctx = ModuleContext(
+            summary="Root",
+            submodules={
+                "pkg": ModuleContext(
+                    summary="Package",
+                    submodules={
+                        "subpkg": ModuleContext(summary="Sub-package"),
+                    },
+                ),
+            },
         )
+        summaries = summarizer._module_summaries_from_code_context(ctx)
+        paths = {path for path, _ in summaries}
+        assert "pkg" in paths
+        assert "pkg/subpkg" in paths
 
-        assert isinstance(result, str)
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_generate_project_context_with_empty_summaries(self, mock_parser, mock_template) -> None:
-        """Should handle empty module summaries dict."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "context"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._project_chain = mock_chain
-
-        result = summarizer.generate_project_context(
-            module_summaries={},
-            project_name="empty_project",
+    def test_extracts_all_summaries_recursively(self, summarizer):
+        """Test that all summaries are extracted from the full hierarchy."""
+        ctx = ModuleContext(
+            summary="Root",
+            submodules={
+                "a": ModuleContext(
+                    summary="Module A",
+                    submodules={
+                        "b": ModuleContext(summary="Module B"),
+                    },
+                ),
+                "c": ModuleContext(summary="Module C"),
+            },
         )
+        summaries = summarizer._module_summaries_from_code_context(ctx)
+        assert len(summaries) == 4  # root, a, a/b, c
+        summary_texts = {s for _, s in summaries}
+        assert "Root" in summary_texts
+        assert "Module A" in summary_texts
+        assert "Module B" in summary_texts
+        assert "Module C" in summary_texts
 
-        assert result == "context"
+    def test_no_submodules_returns_single_entry(self, summarizer):
+        """Test that a context with no submodules returns only root entry."""
+        ctx = ModuleContext(summary="Leaf module")
+        summaries = summarizer._module_summaries_from_code_context(ctx)
+        assert len(summaries) == 1
+        assert summaries[0] == ("", "Leaf module")
 
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_generate_project_context_includes_project_name(self, mock_parser, mock_template) -> None:
-        """Should pass project name to template."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "context"
 
-        summarizer = Summarizer(mock_llm)
-        summarizer._project_chain = mock_chain
+class TestSummarizeProject:
+    """Tests for Summarizer.summarize_project."""
 
-        result = summarizer.generate_project_context(
-            module_summaries={Path("/"): "root"},
-            project_name="my_awesome_project",
+    def test_passes_project_name_to_chain(self, summarizer):
+        """Test that summarize_project passes project_name to chain."""
+        ctx = ModuleContext(summary="Root summary")
+        summarizer.summarize_project("project/\n  src/", ctx, "my-project")
+        call_args = summarizer._project_chain.invoke.call_args[0][0]
+        assert call_args["project_name"] == "my-project"
+
+    def test_passes_project_structure_to_chain(self, summarizer):
+        """Test that summarize_project passes project_structure to chain."""
+        ctx = ModuleContext(summary="Root summary")
+        structure = "my-project/\n  src/\n  tests/"
+        summarizer.summarize_project(structure, ctx, "my-project")
+        call_args = summarizer._project_chain.invoke.call_args[0][0]
+        assert call_args["project_structure"] == structure
+
+    def test_passes_max_lines_to_chain(self, summarizer):
+        """Test that summarize_project passes MAX_PROJECT_SUMMARY_LINES."""
+        ctx = ModuleContext(summary="Root summary")
+        summarizer.summarize_project("structure", ctx, "project")
+        call_args = summarizer._project_chain.invoke.call_args[0][0]
+        assert call_args["max_lines"] == Summarizer.MAX_PROJECT_SUMMARY_LINES
+
+    def test_module_summaries_formatted_in_input(self, summarizer):
+        """Test that module summaries appear in the formatted input."""
+        ctx = ModuleContext(
+            summary="Root module summary",
+            submodules={
+                "utils": ModuleContext(summary="Utils summary"),
+            },
         )
+        summarizer.summarize_project("structure", ctx, "project")
+        call_args = summarizer._project_chain.invoke.call_args[0][0]
+        module_summaries = call_args["module_summaries"]
+        # module_summaries is a list of formatted strings
+        combined = "".join(module_summaries)
+        assert "Root module summary" in combined
+        assert "Utils summary" in combined
 
-        assert result == "context"
-
-
-class TestSummarizerRetryLogic:
-    """Tests for retry logic with exponential backoff."""
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_retry_on_first_failure(self, mock_parser, mock_template) -> None:
-        """Should retry and succeed after failure."""
-        mock_llm = MagicMock()
-        call_count = 0
-
-        def side_effect(*args):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise Exception("temporary failure")
-            return "success"
-
-        mock_chain = MagicMock()
-        mock_chain.invoke.side_effect = side_effect
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        result = summarizer.summarize_file(
-            filepath=Path("test.py"),
-            structure="structure",
-        )
-
-        assert result == "success"
-        assert call_count == 2
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_exhausts_retries_on_constant_failure(self, mock_parser, mock_template) -> None:
-        """Should raise after exhausting all retries."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.side_effect = Exception("permanent failure")
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        with pytest.raises(RuntimeError, match="Summarization failed after"):
-            summarizer.summarize_file(
-                filepath=Path("test.py"),
-                structure="structure",
-            )
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_no_retry_on_success_first_try(self, mock_parser, mock_template) -> None:
-        """Should not retry on successful first call."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "success"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        result = summarizer.summarize_file(
-            filepath=Path("test.py"),
-            structure="structure",
-        )
-
-        assert result == "success"
-        assert mock_chain.invoke.call_count == 1
-
-
-class TestSummarizerChainCreation:
-    """Tests for LangChain chain creation."""
-
-    def test_file_chain_is_runnable_sequence(self) -> None:
-        """Chain should be a RunnableSequence."""
-        mock_llm = MagicMock()
-        summarizer = Summarizer(mock_llm)
-
-        # Chain should be a RunnableSequence
-        assert summarizer._file_chain is not None
-
-    def test_module_chain_is_runnable_sequence(self) -> None:
-        """Module chain should be a RunnableSequence."""
-        mock_llm = MagicMock()
-        summarizer = Summarizer(mock_llm)
-
-        assert summarizer._module_chain is not None
-
-    def test_project_chain_is_runnable_sequence(self) -> None:
-        """Project chain should be a RunnableSequence."""
-        mock_llm = MagicMock()
-        summarizer = Summarizer(mock_llm)
-
-        assert summarizer._project_chain is not None
-
-
-class TestSummarizerWithDifferentInputs:
-    """Tests for various input combinations."""
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_summarize_file_with_special_chars_in_path(self, mock_parser, mock_template) -> None:
-        """Should handle paths with special characters."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "summary"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._file_chain = mock_chain
-
-        result = summarizer.summarize_file(
-            filepath=Path("/path/with-dashes_and_underscores/file.py"),
-            structure="class Test:\n    pass",
-        )
-
-        assert result == "summary"
-
-    @patch('code_monkey.agents.project_librarian.summarizer.ChatPromptTemplate')
-    @patch('code_monkey.agents.project_librarian.summarizer.StrOutputParser')
-    def test_generate_project_context_with_nested_paths(self, mock_parser, mock_template) -> None:
-        """Should handle deeply nested module paths."""
-        mock_llm = MagicMock()
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = "context"
-
-        summarizer = Summarizer(mock_llm)
-        summarizer._project_chain = mock_chain
-
-        module_summaries = {
-            Path("/a/b/c/d/e"): "deep module",
-        }
-
-        result = summarizer.generate_project_context(module_summaries)
-
-        assert result == "context"
+    def test_output_is_stripped(self, summarizer):
+        """Test that summarize_project output is stripped."""
+        summarizer._project_chain.invoke.return_value = "  Project overview  \n"
+        ctx = ModuleContext(summary="Root")
+        result = summarizer.summarize_project("structure", ctx, "project")
+        assert result == "Project overview"
