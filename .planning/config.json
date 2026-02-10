@@ -1,8 +1,11 @@
 {
-  "model_profile": "balanced",
+  "model_profile": "budget",
   "workflow": {
     "research": "prompt",
     "plan_check": true,
-    "verifier": "prompt"
+    "verifier": true
+  },
+  "git": {
+    "branching_strategy": "none"
   }
 }

@@ -25,7 +25,7 @@ gaps: []
 | 3 | "CacheManager handles atomic writes to .codemonkey/file_hashes.json and code_context/" | VERIFIED | `save_hashes()` (line 112), `save_file_summary()` (line 154), `save_module_summary()` (line 201), `save_project_context()` (line 235) all use `tempfile.NamedTemporaryFile` + `rename()` pattern |
 | 4 | "Summarizer generates file/module/project summaries with retry logic" | VERIFIED | `_summarize_with_retry()` (line 373) implements 3 retries with exponential backoff (INITIAL_DELAY=1.0, BACKOFF_BASE=2.0); 3 chain methods: `_create_file_summary_chain()` (line 295), `_create_module_summary_chain()` (line 321), `_create_project_summary_chain()` (line 348) |
 | 5 | "DirectoryProcessor traverses directories top-down, parallelizing file processing" | VERIFIED | `_process_directory_top_down()` (line 590) recursively processes parent before children; uses `ThreadPoolExecutor` (line 606) for parallel file summarization via `executor.map()` |
-| 6 | "Project context tree uses indentation format, showing module hierarchy" | VERIFIED | `generate_project_context()` (line 463) template (line 354-371) explicitly requests "Use indentation tree format to show directory hierarchy" with code block showing `{project_name}/` and `{indented_summary}` |
+| 6 | "Project context tree uses indentation format, showing module hierarchy" | VERIFIED | `generate_project_context()` (line 463) template (line 354-371) explicitly requests "Use indentation tree format to show directory hierarchy" with code block showing `{project_name}/` and `{project_structure}` |
 
 ### Required Artifacts
 
