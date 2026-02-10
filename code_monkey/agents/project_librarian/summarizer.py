@@ -11,8 +11,11 @@ from langchain_core.runnables import RunnableSequence
 from code_monkey.agents.project_librarian.cache_manager import (
     ModuleContext,
 )
-from code_monkey.agents.project_librarian.summarizer_prompts import PROJECT_SUMMARY_TEMPLATE, MODULE_SUMMARY_TEMPLATE, \
-    FILE_SUMMARY_TEMPLATE
+from code_monkey.agents.project_librarian.summarizer_prompts import (
+    FILE_SUMMARY_TEMPLATE,
+    MODULE_SUMMARY_TEMPLATE,
+    PROJECT_SUMMARY_TEMPLATE,
+)
 
 
 class Summarizer:
@@ -71,17 +74,15 @@ class Summarizer:
         return prompt | self.llm | StrOutputParser()
 
     def summarize_file(
-            self,
-            filepath: Path,
-            code: str,
-            parent_context: str | None = None,
+        self,
+        filepath: Path,
+        code: str,
     ) -> str:
         """Generate summary for a single file.
 
         Args:
             filepath: Path to the file.
             code: Parsed code structure string.
-            parent_context: Optional parent module context.
 
         Returns:
             File summary string.
@@ -89,7 +90,6 @@ class Summarizer:
         input_vars = {
             "filepath": str(filepath),
             "code": code,
-            "parent_context": parent_context or "(none)",
             "max_lines": self.MAX_FILE_SUMMARY_LINES,
         }
         return self._file_chain.invoke(input_vars).strip()
@@ -97,40 +97,48 @@ class Summarizer:
     class FileInfo(NamedTuple):
         filepath: Path
         summary: str
-        structure: str
+        structure: str | None
 
     @staticmethod
     def _format_file_info(info: "Summarizer.FileInfo") -> str:
         return f"File: {info.filepath.name}\n{info.structure}\nSummary:\n{info.summary}"
 
     def summarize_module(
-            self,
-            directory: Path,
-            file_infos: list[FileInfo],
-            parent_context: str | None = None,
+        self,
+        directory: Path,
+        file_infos: list[FileInfo],
+        submodule_infos: list[FileInfo],
+        parent_context: str | None = None,
     ) -> str:
         """Generate summary for a module (directory).
 
         Args:
             directory: Path to the module directory.
             file_infos: List of FileInfo tuples for files in the module.
+            submodule_infos: List of FileInfo tuples for submodules.
             parent_context: Optional parent module context.
 
         Returns:
             Module summary string.
         """
-        combined_summaries = "\n---\n".join(Summarizer._format_file_info(info) for info in file_infos)
+        combined_file_summaries = "\n---\n".join(
+            Summarizer._format_file_info(info) for info in file_infos
+        )
+        combined_submodule_summaries = "\n---\n".join(
+            Summarizer._format_file_info(info) for info in submodule_infos
+        )
         input_vars = {
             "module_path": str(directory),
-            "file_summaries": combined_summaries,
+            "file_summaries": combined_file_summaries,
+            "submodule_summaries": combined_submodule_summaries,
             "parent_context": parent_context or "(none)",
             "max_lines": self.MAX_MODULE_SUMMARY_LINES,
         }
         return self._module_chain.invoke(input_vars).strip()
 
     def _module_summaries_from_code_context(
-            self,
-            code_context: ModuleContext,
+        self,
+        code_context: ModuleContext,
     ) -> list[tuple[str, str]]:
         """Extract module summaries from code context.
 
@@ -144,8 +152,8 @@ class Summarizer:
         summary_parts: list[tuple[str, str]] = []
 
         def collect_summaries(
-                module: ModuleContext,
-                path: str,
+            module: ModuleContext,
+            path: str,
         ) -> None:
             summary_parts.append((path, module.summary))
 
@@ -157,10 +165,10 @@ class Summarizer:
         return summary_parts
 
     def summarize_project(
-            self,
-            project_structure: str,
-            code_context: ModuleContext,
-            project_name: str,
+        self,
+        project_structure: str,
+        code_context: ModuleContext,
+        project_name: str,
     ) -> str:
         """Generate root summary from code context.
 

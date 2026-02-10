@@ -42,16 +42,17 @@ class TestSummarizeFile:
 
     def test_returns_stripped_llm_output(self, mock_llm):
         mock_llm.invoke.return_value = AIMessage(content="  File summary  ")
-        result = Summarizer(mock_llm).summarize_file(Path("/test/file.py"), "def foo(): pass")
+        result = Summarizer(mock_llm).summarize_file(
+            Path("/test/file.py"), "def foo(): pass"
+        )
         assert result == "File summary"
 
     def test_prompt(self, summarizer, mock_llm):
         code = "def foo(): return 42"
-        summarizer.summarize_file(Path("/test/file.py"), code, parent_context="Parent context")
+        summarizer.summarize_file(Path("/test/file.py"), code)
         assert _prompt_content(mock_llm) == FILE_SUMMARY_TEMPLATE.format(
             filepath="/test/file.py",
             code=code,
-            parent_context="Parent context",
             max_lines=Summarizer.MAX_FILE_SUMMARY_LINES,
         )
 
@@ -70,16 +71,40 @@ class TestSummarizeModule:
 
     def test_returns_stripped_llm_output(self, mock_llm):
         mock_llm.invoke.return_value = AIMessage(content="\n  Module summary  \n")
-        file_info = Summarizer.FileInfo(filepath=Path("/project/mod.py"), summary="A module", structure="def func(): ...")
-        result = Summarizer(mock_llm).summarize_module(Path("/project"), [file_info])
+        file_info = Summarizer.FileInfo(
+            filepath=Path("/project/mod.py"),
+            summary="A module",
+            structure="def func(): ...",
+        )
+        submodule_info = Summarizer.FileInfo(
+            filepath=Path("/project/utils/"), summary="A helper module", structure=None
+        )
+        result = Summarizer(mock_llm).summarize_module(
+            Path("/project"), [file_info], [submodule_info]
+        )
         assert result == "Module summary"
 
     def test_prompt(self, summarizer, mock_llm):
         file_infos = [
-            Summarizer.FileInfo(filepath=Path("/project/a.py"), summary="A summary", structure="class A: ..."),
-            Summarizer.FileInfo(filepath=Path("/project/b.py"), summary="B summary", structure="class B: ..."),
+            Summarizer.FileInfo(
+                filepath=Path("/project/a.py"),
+                summary="A summary",
+                structure="class A: ...",
+            ),
+            Summarizer.FileInfo(
+                filepath=Path("/project/b.py"),
+                summary="B summary",
+                structure="class B: ...",
+            ),
         ]
-        summarizer.summarize_module(Path("/project/utils"), file_infos, parent_context="Root context")
+        submodule_infos = [
+            Summarizer.FileInfo(
+                filepath=Path("/project/utils/"),
+                summary="Utils summary",
+                structure=None,
+            )
+        ]
+        summarizer.summarize_module(Path("/project/utils"), file_infos, submodule_infos)
         file_summaries = (
             "File: a.py\nclass A: ...\nSummary:\nA summary"
             "\n---\n"
@@ -88,17 +113,7 @@ class TestSummarizeModule:
         assert _prompt_content(mock_llm) == MODULE_SUMMARY_TEMPLATE.format(
             module_path="/project/utils",
             file_summaries=file_summaries,
-            parent_context="Root context",
-            max_lines=Summarizer.MAX_MODULE_SUMMARY_LINES,
-        )
-
-    def test_prompt_default_parent_context(self, summarizer, mock_llm):
-        file_info = Summarizer.FileInfo(filepath=Path("/project/mod.py"), summary="A module", structure="def func(): ...")
-        summarizer.summarize_module(Path("/project"), [file_info])
-        assert _prompt_content(mock_llm) == MODULE_SUMMARY_TEMPLATE.format(
-            module_path="/project",
-            file_summaries="File: mod.py\ndef func(): ...\nSummary:\nA module",
-            parent_context="(none)",
+            submodule_summaries="File: utils\nNone\nSummary:\nUtils summary",
             max_lines=Summarizer.MAX_MODULE_SUMMARY_LINES,
         )
 
@@ -107,7 +122,9 @@ class TestModuleSummariesFromCodeContext:
     """Tests for Summarizer._module_summaries_from_code_context."""
 
     def test_root_module_uses_empty_string_as_path(self, summarizer):
-        summaries = summarizer._module_summaries_from_code_context(ModuleContext(summary="Root summary"))
+        summaries = summarizer._module_summaries_from_code_context(
+            ModuleContext(summary="Root summary")
+        )
         assert summaries[0] == ("", "Root summary")
 
     def test_single_submodule_path(self, summarizer):
@@ -115,7 +132,9 @@ class TestModuleSummariesFromCodeContext:
             summary="Root",
             submodules={"utils": ModuleContext(summary="Utils module")},
         )
-        paths = {path for path, _ in summarizer._module_summaries_from_code_context(ctx)}
+        paths = {
+            path for path, _ in summarizer._module_summaries_from_code_context(ctx)
+        }
         assert "utils" in paths
 
     def test_nested_submodule_path(self, summarizer):
@@ -128,7 +147,9 @@ class TestModuleSummariesFromCodeContext:
                 ),
             },
         )
-        paths = {path for path, _ in summarizer._module_summaries_from_code_context(ctx)}
+        paths = {
+            path for path, _ in summarizer._module_summaries_from_code_context(ctx)
+        }
         assert "pkg" in paths
         assert "pkg/subpkg" in paths
 
@@ -148,7 +169,9 @@ class TestModuleSummariesFromCodeContext:
         assert {s for _, s in summaries} == {"Root", "Module A", "Module B", "Module C"}
 
     def test_no_submodules_returns_single_entry(self, summarizer):
-        summaries = summarizer._module_summaries_from_code_context(ModuleContext(summary="Leaf module"))
+        summaries = summarizer._module_summaries_from_code_context(
+            ModuleContext(summary="Leaf module")
+        )
         assert summaries == [("", "Leaf module")]
 
 
@@ -157,7 +180,9 @@ class TestSummarizeProject:
 
     def test_returns_stripped_llm_output(self, mock_llm):
         mock_llm.invoke.return_value = AIMessage(content="  Project overview  \n")
-        result = Summarizer(mock_llm).summarize_project("structure", ModuleContext(summary="Root"), "project")
+        result = Summarizer(mock_llm).summarize_project(
+            "structure", ModuleContext(summary="Root"), "project"
+        )
         assert result == "Project overview"
 
     def test_prompt(self, summarizer, mock_llm):
@@ -169,7 +194,9 @@ class TestSummarizeProject:
         summarizer.summarize_project(structure, ctx, "my-project")
 
         summary_parts = summarizer._module_summaries_from_code_context(ctx)
-        module_summaries = [f"{path}:\n{summary}\n\n" for path, summary in summary_parts]
+        module_summaries = [
+            f"{path}:\n{summary}\n\n" for path, summary in summary_parts
+        ]
         assert _prompt_content(mock_llm) == PROJECT_SUMMARY_TEMPLATE.format(
             module_summaries=module_summaries,
             project_name="my-project",

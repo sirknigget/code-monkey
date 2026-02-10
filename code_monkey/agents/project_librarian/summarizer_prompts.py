@@ -2,12 +2,8 @@ FILE_SUMMARY_TEMPLATE = """You are a code analyst. Summarize this code file conc
 
 File: {filepath}
 
-Structure:
-Code
+Code:
 {code}
-
-Parent module context (if any):
-{parent_context}
 
 Requirements:
 - State the file's primary purpose
@@ -26,8 +22,8 @@ Module: {module_path}
 File summaries:
 {file_summaries}
 
-Parent module context (if any):
-{parent_context}
+Submodule summaries:
+{submodule_summaries}
 
 Requirements:
 - Describe the module's purpose and what it provides
