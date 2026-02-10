@@ -1,7 +1,7 @@
-"""LLM-based summarizer with retry logic."""
+"""LLM-based summarizer with LangChain retry."""
 
-import time
 from pathlib import Path
+from typing import NamedTuple
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
@@ -11,19 +11,21 @@ from langchain_core.runnables import RunnableSequence
 from code_monkey.agents.project_librarian.cache_manager import (
     ModuleContext,
 )
+from code_monkey.agents.project_librarian.summarizer_prompts import PROJECT_SUMMARY_TEMPLATE, MODULE_SUMMARY_TEMPLATE, \
+    FILE_SUMMARY_TEMPLATE
 
 
 class Summarizer:
-    """LLM-based file, module, and project summarization with retry logic.
+    """LLM-based file, module, and project summarization.
 
     Uses three distinct prompt templates for different summarization levels.
-    Implements exponential backoff retry for LLM failures.
+    Relies on LangChain's built-in retry support on the LLM.
     """
 
-    MAX_SUMMARY_LINES = 10
+    MAX_FILE_SUMMARY_LINES = 20
+    MAX_MODULE_SUMMARY_LINES = 100
+    MAX_PROJECT_SUMMARY_LINES = 1000
     MAX_RETRIES = 3
-    BACKOFF_BASE = 2.0
-    INITIAL_DELAY = 1.0
 
     def __init__(self, llm: BaseChatModel) -> None:
         """Initialize summarizer with LLM.
@@ -31,7 +33,9 @@ class Summarizer:
         Args:
             llm: LangChain BaseChatModel instance.
         """
-        self.llm = llm
+        # Attach retry behavior directly to the LLM runnable.
+        self.llm = llm.with_retry(stop_after_attempt=self.MAX_RETRIES)
+
         self._file_chain = self._create_file_summary_chain()
         self._module_chain = self._create_module_summary_chain()
         self._project_chain = self._create_project_summary_chain()
@@ -42,23 +46,7 @@ class Summarizer:
         Returns:
             RunnableSequence for file summarization.
         """
-        template = """You are a code analyst. Summarize this Python file concisely.
-
-File: {filepath}
-Structure:
-{structure}
-
-Parent module context (if any):
-{parent_context}
-
-Requirements:
-- 2-3 sentences maximum
-- State the file's primary purpose
-- Mention key classes and functions
-- Use active voice
-- Keep under {max_lines} lines
-
-Summary:"""
+        template = FILE_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
         return prompt | self.llm | StrOutputParser()
 
@@ -68,24 +56,7 @@ Summary:"""
         Returns:
             RunnableSequence for module summarization.
         """
-        template = """You are a code analyst. Summarize this Python module (directory).
-
-Module: {module_path}
-
-File summaries:
-{file_summaries}
-
-Parent module context (if any):
-{parent_context}
-
-Requirements:
-- 3-5 sentences maximum
-- Describe the module's purpose and what it provides
-- Explain relationships between files
-- Mention key exports/APIs
-- Keep under {max_lines} lines
-
-Summary:"""
+        template = MODULE_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
         return prompt | self.llm | StrOutputParser()
 
@@ -95,73 +66,21 @@ Summary:"""
         Returns:
             RunnableSequence for project context generation.
         """
-        template = """You are a code analyst. Create a project structure overview.
-
-Module summaries by directory:
-{module_summaries}
-
-Requirements:
-- Use indentation tree format to show directory hierarchy
-- Show module purpose at each level
-- Maximum 10 lines total
-- Focus on key modules and their responsibilities
-
-Project Structure:
-```
-{project_name}
-{indented_summary}
-```"""
+        template = PROJECT_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
         return prompt | self.llm | StrOutputParser()
 
-    def _summarize_with_retry(
-        self, chain: RunnableSequence, input: dict, max_lines: int
-    ) -> str:
-        """Execute summarization with exponential backoff retry.
-
-        Args:
-            chain: LangChain chain to execute.
-            input: Dictionary of template variables.
-            max_lines: Maximum allowed lines in output.
-
-        Returns:
-            Summary string (truncated to max_lines if needed).
-
-        Raises:
-            RuntimeError: After all retries are exhausted.
-        """
-        last_error: Exception | None = None
-        delay = self.INITIAL_DELAY
-
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                result = chain.invoke(input).strip()
-                # Truncate to max_lines
-                lines = result.split("\n")
-                if len(lines) > max_lines:
-                    result = "\n".join(lines[:max_lines])
-                return result
-            except Exception as e:
-                last_error = e
-                if attempt < self.MAX_RETRIES - 1:
-                    time.sleep(delay)
-                    delay *= self.BACKOFF_BASE
-
-        raise RuntimeError(
-            f"Summarization failed after {self.MAX_RETRIES} attempts: {last_error}"
-        )
-
     def summarize_file(
-        self,
-        filepath: Path,
-        structure: str,
-        parent_context: str | None = None,
+            self,
+            filepath: Path,
+            code: str,
+            parent_context: str | None = None,
     ) -> str:
         """Generate summary for a single file.
 
         Args:
             filepath: Path to the file.
-            structure: Parsed code structure string.
+            code: Parsed code structure string.
             parent_context: Optional parent module context.
 
         Returns:
@@ -169,49 +88,88 @@ Project Structure:
         """
         input_vars = {
             "filepath": str(filepath),
-            "structure": structure,
+            "code": code,
             "parent_context": parent_context or "(none)",
-            "max_lines": self.MAX_SUMMARY_LINES,
+            "max_lines": self.MAX_FILE_SUMMARY_LINES,
         }
-        return self._summarize_with_retry(
-            self._file_chain, input_vars, self.MAX_SUMMARY_LINES
-        )
+        return self._file_chain.invoke(input_vars).strip()
+
+    class FileInfo(NamedTuple):
+        filepath: Path
+        summary: str
+        structure: str
 
     def summarize_module(
-        self,
-        directory: Path,
-        file_summaries: list[str],
-        parent_context: str | None = None,
+            self,
+            directory: Path,
+            file_infos: list[FileInfo],
+            parent_context: str | None = None,
     ) -> str:
         """Generate summary for a module (directory).
 
         Args:
             directory: Path to the module directory.
-            file_summaries: List of file summary strings.
+            file_infos: List of FileInfo tuples for files in the module.
             parent_context: Optional parent module context.
 
         Returns:
             Module summary string.
         """
-        combined_summaries = "\n---\n".join(file_summaries)
+
+        def format_file_summary(info: Summarizer.FileInfo) -> str:
+            return f"""File: {info.filepath.name}
+                {info.structure}
+                Summary:
+                {info.summary}
+                """
+
+        combined_summaries = "\n---\n".join([format_file_summary(info) for info in file_infos])
         input_vars = {
             "module_path": str(directory),
             "file_summaries": combined_summaries,
             "parent_context": parent_context or "(none)",
-            "max_lines": self.MAX_SUMMARY_LINES,
+            "max_lines": self.MAX_MODULE_SUMMARY_LINES,
         }
-        return self._summarize_with_retry(
-            self._module_chain, input_vars, self.MAX_SUMMARY_LINES
-        )
+        return self._module_chain.invoke(input_vars).strip()
+
+    def _module_summaries_from_code_context(
+            self,
+            code_context: ModuleContext,
+    ) -> list[tuple[str, str]]:
+        """Extract module summaries from code context.
+
+        Args:
+            code_context: Hierarchical code context.
+
+        Returns:
+            List of (module_path, summary) tuples.
+            The root module uses an empty string as its path.
+        """
+        summary_parts: list[tuple[str, str]] = []
+
+        def collect_summaries(
+                module: ModuleContext,
+                path: str,
+        ) -> None:
+            summary_parts.append((path, module.summary))
+
+            for name, submodule in module.submodules.items():
+                next_path = f"{path}/{name}" if path else name
+                collect_summaries(submodule, next_path)
+
+        collect_summaries(code_context, "")
+        return summary_parts
 
     def summarize_project(
-        self,
-        code_context: ModuleContext,
-        project_name: str = "project",
+            self,
+            project_structure: str,
+            code_context: ModuleContext,
+            project_name: str,
     ) -> str:
         """Generate root summary from code context.
 
         Args:
+            project_structure: Indented project structure string.
             code_context: Hierarchical code context.
             project_name: Name of the project for display.
 
@@ -219,85 +177,20 @@ Project Structure:
             Root module summary string.
         """
         # Collect all module summaries recursively
-        summary_parts: list[tuple[tuple[str, ...], str]] = []
-
-        def collect_summaries(
-            modules: dict[str, ModuleContext], path: tuple[str, ...]
-        ) -> None:
-            for name, module in modules.items():
-                current_path = path + (name,)
-                summary_parts.append((current_path, module.summary))
-                collect_summaries(module.submodules, current_path)
-
-        collect_summaries(code_context.submodules, ())
+        summary_parts = self._module_summaries_from_code_context(code_context)
 
         # Format for LLM
         formatted = []
-        for path_parts, summary in summary_parts:
-            path_str = "/".join(path_parts)
-            formatted.append(f"{path_str}: {summary}")
-        combined = "\n".join(formatted)
+        for path, summary in summary_parts:
+            formatted.append(f"{path}:\n{summary}\n\n")
 
         input_vars = {
-            "module_summaries": combined,
+            "module_summaries": formatted,
             "project_name": project_name,
-            "indented_summary": combined,
+            "project_structure": project_structure,
+            "max_lines": self.MAX_PROJECT_SUMMARY_LINES,
         }
-        return self._summarize_with_retry(
-            self._project_chain, input_vars, self.MAX_SUMMARY_LINES
-        )
-
-    def generate_project_context(
-        self,
-        code_context: ModuleContext | dict[Path, str],
-        project_name: str = "project",
-    ) -> str:
-        """Generate project-wide context using indentation tree format.
-
-        Args:
-            code_context: Hierarchical code context or legacy dict.
-            project_name: Name of the project for display.
-
-        Returns:
-            Project context string in indentation tree format.
-        """
-        # Handle both ModuleContext and legacy dict format
-        if isinstance(code_context, ModuleContext):
-            # Collect all module summaries recursively
-            summary_parts: list[tuple[tuple[str, ...], str]] = []
-
-            def collect_summaries(
-                modules: dict[str, ModuleContext], path: tuple[str, ...]
-            ) -> None:
-                for name, module in modules.items():
-                    current_path = path + (name,)
-                    summary_parts.append((current_path, module.summary))
-                    collect_summaries(module.submodules, current_path)
-
-            collect_summaries(code_context.submodules, ())
-
-            # Format for LLM
-            formatted = []
-            for path_parts, summary in summary_parts:
-                path_str = "/".join(path_parts)
-                formatted.append(f"{path_str}: {summary}")
-            combined = "\n".join(formatted)
-        else:
-            # Legacy dict format
-            summary_parts = []
-            for dir_path, summary in sorted(code_context.items()):
-                rel_path = dir_path.relative_to(dir_path.root)
-                summary_parts.append(f"{rel_path}: {summary}")
-            combined = "\n".join(summary_parts)
-
-        input_vars = {
-            "module_summaries": combined,
-            "project_name": project_name,
-            "indented_summary": combined,
-        }
-        return self._summarize_with_retry(
-            self._project_chain, input_vars, self.MAX_SUMMARY_LINES
-        )
+        return self._project_chain.invoke(input_vars).strip()
 
 
 __all__ = ["Summarizer"]
