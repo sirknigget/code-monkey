@@ -8,13 +8,12 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    ModuleContext,
-    FileContext,
 )
 from code_monkey.agents.project_librarian.project_mapper import (
     ProjectMapper,
     ProjectMapperResult,
 )
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
 
 
 class TestProjectMapperInitialization:

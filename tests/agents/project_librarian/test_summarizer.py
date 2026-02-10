@@ -7,13 +7,13 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
-from code_monkey.agents.project_librarian.cache_manager import ModuleContext
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.summarizer_prompts import (
     FILE_SUMMARY_TEMPLATE,
     MODULE_SUMMARY_TEMPLATE,
     PROJECT_SUMMARY_TEMPLATE,
 )
+from code_monkey.agents.project_librarian.types import ModuleContext
 
 
 @pytest.fixture

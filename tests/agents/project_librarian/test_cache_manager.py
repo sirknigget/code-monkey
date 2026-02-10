@@ -8,10 +8,9 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    FileContext,
-    ModuleContext,
     module_context_from_dict,
 )
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
 
 
 @pytest.fixture
@@ -38,12 +37,7 @@ class TestModuleContextFromDict:
 
     def test_with_files(self):
         """Test loading with files from dict."""
-        data = {
-            "summary": "Module",
-            "files": {
-                "test.py": {"summary": "A test file"}
-            }
-        }
+        data = {"summary": "Module", "files": {"test.py": {"summary": "A test file"}}}
         ctx = module_context_from_dict(data)
         assert ctx.summary == "Module"
         assert "test.py" in ctx.files
@@ -56,11 +50,9 @@ class TestModuleContextFromDict:
             "submodules": {
                 "pkg": {
                     "summary": "Package",
-                    "files": {
-                        "mod.py": {"summary": "Module file"}
-                    }
+                    "files": {"mod.py": {"summary": "Module file"}},
                 }
-            }
+            },
         }
         ctx = module_context_from_dict(data)
         assert ctx.summary == "Root"
@@ -79,10 +71,7 @@ class TestCacheManagerHashes:
 
     def test_save_and_load_hashes(self, cache_manager):
         """Test save_hashes and load_hashes roundtrip."""
-        test_hashes = {
-            "/path/to/file1.py": "abc123",
-            "/path/to/file2.py": "def456"
-        }
+        test_hashes = {"/path/to/file1.py": "abc123", "/path/to/file2.py": "def456"}
         cache_manager.save_hashes(test_hashes)
         loaded = cache_manager.load_hashes()
         assert loaded == test_hashes
@@ -121,12 +110,8 @@ class TestCacheManagerCodeContext:
         """Test save_code_context and load_code_context roundtrip."""
         ctx = ModuleContext(
             summary="Root module",
-            files={
-                "main.py": FileContext(summary="Main entry")
-            },
-            submodules={
-                "utils": ModuleContext(summary="Utilities")
-            }
+            files={"main.py": FileContext(summary="Main entry")},
+            submodules={"utils": ModuleContext(summary="Utilities")},
         )
         cache_manager.save_code_context(ctx)
         loaded = cache_manager.load_code_context()

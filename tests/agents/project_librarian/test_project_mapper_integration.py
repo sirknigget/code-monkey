@@ -13,10 +13,9 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    FileContext,
-    ModuleContext,
 )
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
 
 logger = logging.getLogger(__name__)
 

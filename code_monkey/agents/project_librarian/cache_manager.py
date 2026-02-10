@@ -10,26 +10,14 @@ from __future__ import annotations
 
 import json
 import tempfile
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict
 from pathlib import Path
 
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
 
 # =========================
 # Context models
 # =========================
-
-@dataclass
-class FileContext:
-    """A file in the code hierarchy."""
-    summary: str
-
-
-@dataclass
-class ModuleContext:
-    """A module in the code hierarchy."""
-    summary: str
-    files: dict[str, FileContext] = field(default_factory=dict)
-    submodules: dict[str, "ModuleContext"] = field(default_factory=dict)
 
 
 def module_context_from_dict(data: dict) -> ModuleContext:

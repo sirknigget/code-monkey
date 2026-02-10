@@ -8,14 +8,12 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 
-from code_monkey.agents.project_librarian.cache_manager import (
-    ModuleContext,
-)
 from code_monkey.agents.project_librarian.summarizer_prompts import (
     FILE_SUMMARY_TEMPLATE,
     MODULE_SUMMARY_TEMPLATE,
     PROJECT_SUMMARY_TEMPLATE,
 )
+from code_monkey.agents.project_librarian.types import ModuleContext
 
 
 class Summarizer:
@@ -82,7 +80,7 @@ class Summarizer:
 
         Args:
             filepath: Path to the file.
-            code: Parsed code structure string.
+            code: code string.
 
         Returns:
             File summary string.

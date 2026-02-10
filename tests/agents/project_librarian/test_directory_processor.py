@@ -7,11 +7,10 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    FileContext,
-    ModuleContext,
 )
 from code_monkey.agents.project_librarian.directory_processor import DirectoryProcessor
 from code_monkey.agents.project_librarian.summarizer import Summarizer
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
 
 
 class MockSummarizer:

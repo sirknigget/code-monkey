@@ -19,15 +19,14 @@ compose all summaries into context json (.codemonkey/code-context)
 compose a summary of the whole project or adjust the existing one (.codemonkey/project-context)
 
 
+class ProjectMapper(working_dir):
 
-project mapper class that creates the project context files from code. the class knows how to scan the whole project or get a list of paths to update.
-for a scanned project, it will check against the file hashes and only update modified filed, while updating their new hashes.
-once its known which files to update, it will run over the directory structure starting from top level and progressing deeper. it will only run on directories where a change occured.
-for each code file to update, it will prompt an LLM to summarize the file and its purpose (LLM provided on class initialization). it will also run the code parser to get a definition tree.
-after finishing file summarizations and parsing for a directory, it will also prompt an LLM to create a module summary - using only code file summaries and their parsed elements.
-if a module summary existed already, the LLM will be prompted to just update it with the new information.
-for every subfolder (module), and every code file summarization inside it, a short summary of the parent module will be provided to the LLM summarization prompt.
-once the whole traversal is complete, a project context summary will be created in a separate file, using a tree formatted representation of all module and code summaries, fed to an LLM with a summarization prompt.
+method map_modules():
+
+1. Load dict of modified files using project_file_hashes.py
+2. Load current ModuleContext from cache_manager.py (can be None on first run)
+3. Consolidates both returned dict and current ModuleContext, to create a revised ModuleContext where each file or module that was modified has the field "summary" set to None. A modified, added or deleted file will exist in the modified file dict and its summary should be None. A module containing any modification will also reset its summary to None. This should be traversed bottom-to-top, such that any file change will trigger summary=None in all its parents.
+4. Summarization will work on this new ModuleContext from bottom to top using summarizer.py. Each file in a module will be summarized first (load code from file). Then, the containing module will be summarized using a list of its file summaries (either new or cached). Then, traversing upwards, each parent module will be summarized according to files and submodules, until we reach the root level.
 
 
 

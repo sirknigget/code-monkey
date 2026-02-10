@@ -15,13 +15,13 @@ from langchain_core.language_models import BaseChatModel
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    FileContext,
-    ModuleContext,
 )
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
+from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
+from code_monkey.agents.project_librarian.utils.file_discovery import (
+    discover_python_files,
+)
 from code_monkey.agents.project_librarian.utils.hash_utils import compute_file_hash
-
 from code_monkey.utils.task_result import TaskResult
 
 
@@ -228,7 +228,9 @@ class ProjectMapper:
 
         # Generate new summary
         source = filepath.read_text(encoding="utf-8")
-        from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code
+        from code_monkey.agents.project_librarian.utils.code_parser import (
+            parse_python_code,
+        )
         parsed = parse_python_code(source)
         structure = parsed.llm_friendly_string(include_imports=True)
         summary = self._summarizer.summarize_file(filepath, structure, parent_context=None)
