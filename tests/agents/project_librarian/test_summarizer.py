@@ -80,7 +80,11 @@ class TestSummarizeModule:
             Summarizer.FileInfo(filepath=Path("/project/b.py"), summary="B summary", structure="class B: ..."),
         ]
         summarizer.summarize_module(Path("/project/utils"), file_infos, parent_context="Root context")
-        file_summaries = "\n---\n".join(Summarizer._format_file_info(fi) for fi in file_infos)
+        file_summaries = (
+            "File: a.py\nclass A: ...\nSummary:\nA summary"
+            "\n---\n"
+            "File: b.py\nclass B: ...\nSummary:\nB summary"
+        )
         assert _prompt_content(mock_llm) == MODULE_SUMMARY_TEMPLATE.format(
             module_path="/project/utils",
             file_summaries=file_summaries,
@@ -93,7 +97,7 @@ class TestSummarizeModule:
         summarizer.summarize_module(Path("/project"), [file_info])
         assert _prompt_content(mock_llm) == MODULE_SUMMARY_TEMPLATE.format(
             module_path="/project",
-            file_summaries=Summarizer._format_file_info(file_info),
+            file_summaries="File: mod.py\ndef func(): ...\nSummary:\nA module",
             parent_context="(none)",
             max_lines=Summarizer.MAX_MODULE_SUMMARY_LINES,
         )
