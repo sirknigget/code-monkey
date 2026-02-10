@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 class FileContext:
     """A file in the code hierarchy."""
 
-    summary: str
+    summary: str | None
 
 
 @dataclass
