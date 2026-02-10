@@ -56,15 +56,6 @@ class TestSummarizeFile:
             max_lines=Summarizer.MAX_FILE_SUMMARY_LINES,
         )
 
-    def test_prompt_default_parent_context(self, summarizer, mock_llm):
-        summarizer.summarize_file(Path("/test/file.py"), "code")
-        assert _prompt_content(mock_llm) == FILE_SUMMARY_TEMPLATE.format(
-            filepath="/test/file.py",
-            code="code",
-            parent_context="(none)",
-            max_lines=Summarizer.MAX_FILE_SUMMARY_LINES,
-        )
-
 
 class TestSummarizeModule:
     """Tests for Summarizer.summarize_module."""
@@ -74,10 +65,9 @@ class TestSummarizeModule:
         file_info = Summarizer.FileInfo(
             filepath=Path("/project/mod.py"),
             summary="A module",
-            structure="def func(): ...",
         )
         submodule_info = Summarizer.FileInfo(
-            filepath=Path("/project/utils/"), summary="A helper module", structure=None
+            filepath=Path("/project/utils/"), summary="A helper module"
         )
         result = Summarizer(mock_llm).summarize_module(
             Path("/project"), [file_info], [submodule_info]
@@ -89,31 +79,28 @@ class TestSummarizeModule:
             Summarizer.FileInfo(
                 filepath=Path("/project/a.py"),
                 summary="A summary",
-                structure="class A: ...",
             ),
             Summarizer.FileInfo(
                 filepath=Path("/project/b.py"),
                 summary="B summary",
-                structure="class B: ...",
             ),
         ]
         submodule_infos = [
             Summarizer.FileInfo(
                 filepath=Path("/project/utils/"),
                 summary="Utils summary",
-                structure=None,
             )
         ]
         summarizer.summarize_module(Path("/project/utils"), file_infos, submodule_infos)
         file_summaries = (
-            "File: a.py\nclass A: ...\nSummary:\nA summary"
+            "File: a.py -> Summary:\nA summary"
             "\n---\n"
-            "File: b.py\nclass B: ...\nSummary:\nB summary"
+            "File: b.py -> Summary:\nB summary"
         )
         assert _prompt_content(mock_llm) == MODULE_SUMMARY_TEMPLATE.format(
             module_path="/project/utils",
             file_summaries=file_summaries,
-            submodule_summaries="File: utils\nNone\nSummary:\nUtils summary",
+            submodule_summaries="File: utils -> Summary:\nUtils summary",
             max_lines=Summarizer.MAX_MODULE_SUMMARY_LINES,
         )
 

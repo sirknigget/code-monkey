@@ -97,11 +97,10 @@ class Summarizer:
     class FileInfo(NamedTuple):
         filepath: Path
         summary: str
-        structure: str | None
 
     @staticmethod
     def _format_file_info(info: "Summarizer.FileInfo") -> str:
-        return f"File: {info.filepath.name}\n{info.structure}\nSummary:\n{info.summary}"
+        return f"File: {info.filepath.name} -> Summary:\n{info.summary}"
 
     def summarize_module(
         self,

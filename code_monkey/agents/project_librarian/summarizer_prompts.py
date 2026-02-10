@@ -7,7 +7,7 @@ Code:
 
 Requirements:
 - State the file's primary purpose
-- Mention key classes and functions
+- Mention key classes and functions and imports
 - Use active voice
 - Keep the summary under {max_lines} lines, including bullet points or wrapping
 
