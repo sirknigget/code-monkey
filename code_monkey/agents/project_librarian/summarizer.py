@@ -99,6 +99,10 @@ class Summarizer:
         summary: str
         structure: str
 
+    @staticmethod
+    def _format_file_info(info: "Summarizer.FileInfo") -> str:
+        return f"File: {info.filepath.name}\n{info.structure}\nSummary:\n{info.summary}"
+
     def summarize_module(
             self,
             directory: Path,
@@ -115,15 +119,7 @@ class Summarizer:
         Returns:
             Module summary string.
         """
-
-        def format_file_summary(info: Summarizer.FileInfo) -> str:
-            return f"""File: {info.filepath.name}
-                {info.structure}
-                Summary:
-                {info.summary}
-                """
-
-        combined_summaries = "\n---\n".join([format_file_summary(info) for info in file_infos])
+        combined_summaries = "\n---\n".join(Summarizer._format_file_info(info) for info in file_infos)
         input_vars = {
             "module_path": str(directory),
             "file_summaries": combined_summaries,
