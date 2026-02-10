@@ -9,6 +9,7 @@ import json
 import shutil
 from pathlib import Path
 
+import dotenv
 import pytest
 
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
@@ -17,6 +18,7 @@ from tests.testing_utils import print_progress_bar
 
 logger = logging.getLogger(__name__)
 
+dotenv.load_dotenv(override=True)
 
 class TestProjectMapperRealLLM:
     """Integration tests using real LLM and realistic mock project."""

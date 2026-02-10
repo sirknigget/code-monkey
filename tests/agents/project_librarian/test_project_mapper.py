@@ -8,7 +8,6 @@ import pytest
 
 from code_monkey.agents.project_librarian.cache_manager import (
     CacheManager,
-    CodeContext,
     ModuleContext,
     FileContext,
 )
@@ -53,7 +52,7 @@ class TestProjectMapperResult:
 
     def test_creates_with_contexts(self) -> None:
         """Should create with code_context and project_context."""
-        code_ctx = CodeContext(root_summary="root", modules={})
+        code_ctx = ModuleContext(summary="root", files={}, submodules={})
         result = ProjectMapperResult(
             code_context=code_ctx,
             project_context="project context",
@@ -64,9 +63,10 @@ class TestProjectMapperResult:
 
     def test_repr_format(self) -> None:
         """Should have readable string representation."""
-        code_ctx = CodeContext(
-            root_summary="root",
-            modules={"pkg": ModuleContext(summary="pkg", files={}, submodules={})},
+        code_ctx = ModuleContext(
+            summary="root",
+            files={},
+            submodules={"pkg": ModuleContext(summary="pkg", files={}, submodules={})},
         )
         result = ProjectMapperResult(
             code_context=code_ctx,
@@ -204,7 +204,7 @@ class TestGetSetModule:
         mock_llm = MagicMock()
         mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
 
-        ctx = CodeContext(root_summary="", modules={})
+        ctx = ModuleContext(summary="", files={}, submodules={})
         result = mapper._get_module(ctx, ("pkg",))
 
         assert result is None
@@ -215,7 +215,7 @@ class TestGetSetModule:
         mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
 
         module = ModuleContext(summary="pkg", files={}, submodules={})
-        ctx = CodeContext(root_summary="", modules={"pkg": module})
+        ctx = ModuleContext(summary="", files={}, submodules={"pkg": module})
         result = mapper._get_module(ctx, ("pkg",))
 
         assert result is not None
@@ -226,12 +226,12 @@ class TestGetSetModule:
         mock_llm = MagicMock()
         mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
 
-        ctx = CodeContext(root_summary="", modules={})
+        ctx = ModuleContext(summary="", files={}, submodules={})
         module = ModuleContext(summary="pkg", files={}, submodules={})
         result = mapper._set_module(ctx, ("pkg",), module)
 
-        assert "pkg" in result.modules
-        assert result.modules["pkg"].summary == "pkg"
+        assert "pkg" in result.submodules
+        assert result.submodules["pkg"].summary == "pkg"
 
     def test_set_module_preserves_existing(self, tmp_path: Path) -> None:
         """Should preserve existing modules when setting new one."""
@@ -239,13 +239,13 @@ class TestGetSetModule:
         mapper = ProjectMapper(root=tmp_path, llm=mock_llm)
 
         existing = ModuleContext(summary="existing", files={}, submodules={})
-        ctx = CodeContext(root_summary="", modules={"existing": existing})
+        ctx = ModuleContext(summary="", files={}, submodules={"existing": existing})
         new_module = ModuleContext(summary="new", files={}, submodules={})
         result = mapper._set_module(ctx, ("new",), new_module)
 
-        assert "existing" in result.modules
-        assert "new" in result.modules
-        assert result.modules["existing"].summary == "existing"
+        assert "existing" in result.submodules
+        assert "new" in result.submodules
+        assert result.submodules["existing"].summary == "existing"
 
 
 class TestProcessFile:
@@ -326,7 +326,7 @@ class TestScanGenerator:
                         results = list(mapper.scan())
 
         final_result = results[-1]
-        assert isinstance(final_result.result.code_context, CodeContext)
+        assert isinstance(final_result.result.code_context, ModuleContext)
         assert isinstance(final_result.result.project_context, str)
 
 

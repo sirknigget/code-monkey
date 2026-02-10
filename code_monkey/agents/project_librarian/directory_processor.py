@@ -1,11 +1,18 @@
-"""Directory processor for top-down traversal with parallel file processing."""
+"""Directory processor for top-down traversal with ModuleContext structure.
+
+Processes directories to build a hierarchical ModuleContext with
+FileContext NamedTuples (root ModuleContext uses summary as root_summary).
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
 
-from code_monkey.agents.project_librarian.cache_manager import CacheManager
-from code_monkey.agents.project_librarian.models import FileSummary
+from code_monkey.agents.project_librarian.cache_manager import (
+    CacheManager,
+    FileContext,
+    ModuleContext,
+)
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code
 from code_monkey.agents.project_librarian.utils.file_discovery import discover_python_files
@@ -14,10 +21,10 @@ from code_monkey.utils.task_result import TaskResult
 
 
 class DirectoryProcessor:
-    """Processes directories top-down with parallel file summarization.
+    """Processes directories to build ModuleContext hierarchy.
 
-    Propagates parent module context to child modules for hierarchical
-    understanding.
+    Provides top-down traversal with parallel file processing,
+    building ModuleContext and FileContext structures.
     """
 
     MAX_FILES_PER_SUMMARY = 20
@@ -45,7 +52,6 @@ class DirectoryProcessor:
         py_files = discover_python_files(self.root)
         dirs: set[Path] = set()
         for f in py_files:
-            # Add all parent directories up to root
             parent = f.parent
             while parent >= self.root:
                 dirs.add(parent)
@@ -63,142 +69,206 @@ class DirectoryProcessor:
         """
         return sorted(directory.glob("*.py"))
 
-    def _summarize_single_file(self, filepath: Path) -> FileSummary:
-        """Summarize a single file (for parallel processing).
+    def _summarize_single_file(
+        self, filepath: Path, parent_context: str | None = None
+    ) -> FileContext:
+        """Summarize a single file and return FileContext.
 
         Args:
             filepath: Path to the Python file.
+            parent_context: Optional parent module context.
 
         Returns:
-            FileSummary with filepath and summary.
+            FileContext with filepath and summary.
         """
-        # Try to load from cache first
+        # Try to load from cache
         cached = self.cache.load_file_summary(filepath)
         if cached is not None:
-            return FileSummary(filepath=filepath, summary=cached)
+            return FileContext(summary=cached)
 
-        # Parse the file
+        # Parse and summarize
         source = filepath.read_text(encoding="utf-8")
         parsed = parse_python_code(source)
         structure = parsed.llm_friendly_string(include_imports=True)
-
-        # Generate summary
-        summary = self.summarize_file(filepath, structure, parent_context=None)
+        summary = self.summarizer.summarize_file(
+            filepath, structure, parent_context
+        )
 
         # Save to cache
         self.cache.save_file_summary(filepath, summary)
 
-        return FileSummary(filepath=filepath, summary=summary)
+        return FileContext(summary=summary)
 
-    def summarize_file(
-        self, filepath: Path, structure: str, parent_context: str | None = None
-    ) -> str:
-        """Wrapper to call summarizer with file path.
-
-        Args:
-            filepath: Path to the file.
-            structure: Parsed code structure.
-            parent_context: Optional parent module context.
-
-        Returns:
-            Summary string.
-        """
-        return self.summarizer.summarize_file(filepath, structure, parent_context)
-
-    def _process_directory_top_down(
-        self, directory: Path, parent_summary: str | None = None
-    ) -> str:
-        """Process a directory and all its subdirectories top-down.
+    def _process_directory(
+        self,
+        directory: Path,
+        parent_context: str | None = None,
+    ) -> tuple[ModuleContext, str]:
+        """Process a directory and return ModuleContext.
 
         Args:
             directory: Directory to process.
-            parent_summary: Summary from parent module context.
+            parent_context: Summary from parent module context.
 
         Returns:
-            Module summary for this directory.
+            Tuple of (ModuleContext, module_summary).
         """
-        # Get files in this directory
         files = self._get_files_in_directory(directory)
 
         # Parallel file processing
+        file_contexts: dict[str, FileContext] = {}
         with ThreadPoolExecutor() as executor:
-            file_summaries = list(executor.map(self._summarize_single_file, files))
+            # Map files to their contexts
+            for filename, fc in zip(
+                [f.name for f in files],
+                executor.map(self._summarize_single_file, files),
+            ):
+                file_contexts[filename] = fc
 
         # Extract summary strings for module summarization
-        file_summary_strings = [fs.summary for fs in file_summaries]
+        file_summary_strings = [fc.summary for fc in file_contexts.values()]
 
-        # Generate module summary with parent context
+        # Generate module summary
         module_summary = self.summarizer.summarize_module(
-            directory, file_summary_strings, parent_summary
+            directory, file_summary_strings, parent_context
         )
 
         # Save module summary to cache
         self.cache.save_module_summary(directory, module_summary)
 
         # Process child directories
+        submodule_contexts: dict[str, ModuleContext] = {}
         child_dirs = sorted(
-            d for d in directory.iterdir() if d.is_dir() and d.name != ".codemonkey"
+            d for d in directory.iterdir()
+            if d.is_dir() and d.name != ".codemonkey"
         )
         for child_dir in child_dirs:
-            # Check if child directory has Python files
             if any(child_dir.glob("*.py")):
-                self._process_directory_top_down(child_dir, module_summary)
+                child_module, _ = self._process_directory(
+                    child_dir, module_summary
+                )
+                submodule_contexts[child_dir.name] = child_module
 
-        return module_summary
+        return (
+            ModuleContext(
+                summary=module_summary,
+                files=file_contexts,
+                submodules=submodule_contexts,
+            ),
+            module_summary,
+        )
 
-    def process_changed_directories(
-        self, changed_dirs: set[Path]
-    ) -> Generator[TaskResult, Any, None]:
-        """Process only specified directories and their children.
+    def _build_module_path(self, directory: Path) -> tuple[str, ...]:
+        """Build the module path tuple for a directory.
 
         Args:
-            changed_dirs: Set of directories that have changed.
+            directory: Directory path relative to root.
 
         Returns:
-            TaskResult containing:
-                - result: Dictionary mapping directory paths to their summaries
-                - progress: Current directory index (0-based)
-                - progress_max: Total number of directories to process
+            Tuple of module names from root to this directory.
         """
-        results: dict[Path, str] = {}
+        parts = directory.relative_to(self.root).parts
+        return tuple(parts) if parts else ()
 
+    def process_directories(
+        self, directories: set[Path]
+    ) -> Generator[TaskResult[ModuleContext], None, None]:
+        """Process specified directories and build ModuleContext.
+
+        Args:
+            directories: Set of directories to process.
+
+        Yields:
+            TaskResult containing ModuleContext with progress tracking.
+        """
         # Sort by path depth to process parent directories first
-        sorted_dirs = sorted(changed_dirs, key=lambda p: len(p.parts))
+        sorted_dirs = sorted(directories, key=lambda p: len(p.parts))
         total_dirs = len(sorted_dirs)
 
-        for index, directory in enumerate(sorted_dirs):
-            if directory in results:
-                # Yield progress update even for skipped directories
-                yield TaskResult(
-                    result=results,
-                    progress=index,
-                    progress_max=total_dirs,
-                )
-                continue
+        # Build the context incrementally (root ModuleContext)
+        code_context = ModuleContext(summary="", files={}, submodules={})
 
-            # Get parent summary if available
-            parent_summary = None
-            parent = directory.parent
-            if parent >= self.root and parent in results:
-                parent_summary = results[parent]
+        for index, directory in enumerate(sorted_dirs):
+            module_path = self._build_module_path(directory)
+
+            # Get parent context if available
+            parent_context: str | None = None
+            if module_path:
+                parent_parts = module_path[:-1]
+                if parent_parts:
+                    parent_path = self.root / "/".join(parent_parts)
+                    parent_context = self.cache.load_module_summary(parent_path)
 
             # Process directory
-            summary = self._process_directory_top_down(directory, parent_summary)
-            results[directory] = summary
+            module, _ = self._process_directory(directory, parent_context)
 
-            # Yield progress update after each directory is processed
+            # Set module in context (creating parents as needed)
+            code_context = self._set_module(code_context, module_path, module)
+
             yield TaskResult(
-                result=results,
+                result=code_context,
                 progress=index + 1,
                 progress_max=total_dirs,
             )
 
-        # Final result with complete progress
+        # Final result
         yield TaskResult(
-            result=results,
+            result=code_context,
             progress=total_dirs,
             progress_max=total_dirs,
         )
+
+    def _set_module(
+        self,
+        ctx: ModuleContext,
+        module_path: tuple[str, ...],
+        module: ModuleContext,
+    ) -> ModuleContext:
+        """Set a module in the context, creating parents as needed.
+
+        Args:
+            ctx: Current ModuleContext.
+            module_path: Tuple of module names from root.
+            module: ModuleContext to set.
+
+        Returns:
+            New ModuleContext with module set.
+        """
+        if not module_path:
+            return ModuleContext(summary=module.summary, files={}, submodules=ctx.submodules)
+
+        # Clone the submodules dict and create path
+        new_submodules: dict[str, ModuleContext] = {}
+        for name, mod in ctx.submodules.items():
+            new_submodules[name] = ModuleContext(
+                summary=mod.summary,
+                files=dict(mod.files),
+                submodules=dict(mod.submodules),
+            )
+
+        current = new_submodules
+        for name in module_path[:-1]:
+            if name not in current:
+                current[name] = ModuleContext(
+                    summary="",
+                    files={},
+                    submodules={},
+                )
+            parent = current[name]
+            new_inner_submodules: dict[str, ModuleContext] = {}
+            for subname, submod in parent.submodules.items():
+                new_inner_submodules[subname] = ModuleContext(
+                    summary=submod.summary,
+                    files=dict(submod.files),
+                    submodules=dict(submod.submodules),
+                )
+            current = new_inner_submodules
+
+        # Set the final module
+        final_name = module_path[-1]
+        current[final_name] = module
+
+        return ModuleContext(summary=ctx.summary, files={}, submodules=new_submodules)
 
 
 __all__ = ["DirectoryProcessor"]

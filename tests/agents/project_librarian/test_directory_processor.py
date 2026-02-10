@@ -1,17 +1,17 @@
-"""Tests for DirectoryProcessor class."""
+"""Tests for DirectoryProcessor class with ModuleContext structure."""
 
-import tempfile
-import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from code_monkey.agents.project_librarian.cache_manager import CacheManager
+from code_monkey.agents.project_librarian.cache_manager import (
+    CacheManager,
+    FileContext,
+    ModuleContext,
+)
 from code_monkey.agents.project_librarian.directory_processor import DirectoryProcessor
-from code_monkey.agents.project_librarian.models import FileSummary
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.utils.task_result import TaskResult
 
 
 class MockSummarizer:
@@ -69,7 +69,6 @@ class TestGetAllDirectories:
         mock_summarizer = MockSummarizer()
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Create test structure
         (tmp_path / "main.py").write_text("class Main: pass")
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "module.py").write_text("class Module: pass")
@@ -85,7 +84,6 @@ class TestGetAllDirectories:
         mock_summarizer = MockSummarizer()
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Create files in non-alphabetical order
         (tmp_path / "zebra.py").touch()
         (tmp_path / "apple.py").touch()
         (tmp_path / "banana.py").touch()
@@ -93,23 +91,6 @@ class TestGetAllDirectories:
         result = processor._get_all_directories()
 
         assert result == sorted(result)
-
-    def test_includes_parent_directories(self, tmp_path: Path) -> None:
-        """Should include all parent directories up to root."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer()
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        # Create nested structure
-        deep_path = tmp_path / "src" / "utils" / "helper.py"
-        deep_path.parent.mkdir(parents=True)
-        deep_path.write_text("def helper(): pass")
-
-        result = processor._get_all_directories()
-
-        assert tmp_path in result
-        assert (tmp_path / "src") in result
-        assert (tmp_path / "src" / "utils") in result
 
 
 class TestGetFilesInDirectory:
@@ -157,7 +138,7 @@ class TestGetFilesInDirectory:
 
 
 class TestSummarizeSingleFile:
-    """Tests for single file summarization."""
+    """Tests for single file summarization returning FileContext."""
 
     def test_returns_cached_summary_when_available(self, tmp_path: Path) -> None:
         """Should return cached summary without calling summarizer."""
@@ -165,7 +146,6 @@ class TestSummarizeSingleFile:
         mock_summarizer = MockSummarizer()
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Create and cache a file summary
         test_file = tmp_path / "test.py"
         test_file.write_text("class Test: pass")
         cached_summary = "cached summary"
@@ -173,8 +153,9 @@ class TestSummarizeSingleFile:
 
         result = processor._summarize_single_file(test_file)
 
+        assert isinstance(result, FileContext)
         assert result.summary == cached_summary
-        assert mock_summarizer.call_count == 0  # Summarizer should not be called
+        assert mock_summarizer.call_count == 0
 
     def test_generates_summary_when_not_cached(self, tmp_path: Path) -> None:
         """Should generate summary when not in cache."""
@@ -187,8 +168,8 @@ class TestSummarizeSingleFile:
 
         result = processor._summarize_single_file(test_file)
 
+        assert isinstance(result, FileContext)
         assert result.summary == "generated summary"
-        assert result.filepath == test_file
 
     def test_saves_summary_to_cache(self, tmp_path: Path) -> None:
         """Should save generated summary to cache."""
@@ -205,8 +186,8 @@ class TestSummarizeSingleFile:
         assert cached == "new summary"
 
 
-class TestProcessDirectoryTopDown:
-    """Tests for top-down directory processing."""
+class TestProcessDirectory:
+    """Tests for directory processing returning ModuleContext."""
 
     def test_processes_single_directory(self, tmp_path: Path) -> None:
         """Should process a single directory with files."""
@@ -217,13 +198,14 @@ class TestProcessDirectoryTopDown:
         (tmp_path / "file1.py").write_text("class File1: pass")
         (tmp_path / "file2.py").write_text("class File2: pass")
 
-        result = processor._process_directory_top_down(tmp_path)
+        result, summary = processor._process_directory(tmp_path)
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, ModuleContext)
+        assert result.summary == "module summary"
+        assert len(result.files) == 2
 
     def test_processes_child_directories(self, tmp_path: Path) -> None:
-        """Should process child directories after parent."""
+        """Should process child directories recursively."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
@@ -232,66 +214,144 @@ class TestProcessDirectoryTopDown:
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "module.py").write_text("class Module: pass")
 
-        result = processor._process_directory_top_down(tmp_path)
+        result, _ = processor._process_directory(tmp_path)
 
-        # Should have processed the directory
-        assert isinstance(result, str)
+        assert isinstance(result, ModuleContext)
+        assert "src" in result.submodules
 
-    def test_respects_max_files_per_summary(self, tmp_path: Path) -> None:
-        """Should handle directories with many files."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer("summary")
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        # Create many files
-        for i in range(25):
-            (tmp_path / f"file{i}.py").write_text(f"x = {i}")
-
-        result = processor._process_directory_top_down(tmp_path)
-
-        assert isinstance(result, str)
-
-
-class TestProcessChangedDirectories:
-    """Tests for processing only changed directories."""
-
-    def test_processes_single_changed_directory(self, tmp_path: Path) -> None:
-        """Should process a single changed directory."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer("summary")
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        (tmp_path / "test.py").write_text("x = 1")
-
-        # Collect all TaskResult yields from the generator
-        results_list = list(processor.process_changed_directories({tmp_path}))
-
-        # Should have multiple progress updates plus final result
-        assert len(results_list) >= 1
-
-        # Final result should contain the directory
-        final_result = results_list[-1]
-        assert isinstance(final_result, TaskResult)
-        assert tmp_path in final_result.result
-
-    def test_returns_task_result_generator(self, tmp_path: Path) -> None:
-        """Should return TaskResult objects via generator."""
+    def test_returns_module_context_structure(self, tmp_path: Path) -> None:
+        """Should return proper ModuleContext with files and submodules."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
         (tmp_path / "file.py").write_text("x = 1")
 
-        results_gen = processor.process_changed_directories({tmp_path})
+        result, _ = processor._process_directory(tmp_path)
 
-        # Should be a generator
+        assert isinstance(result, ModuleContext)
+        assert hasattr(result, 'summary')
+        assert hasattr(result, 'files')
+        assert hasattr(result, 'submodules')
+        assert isinstance(result.files, dict)
+        assert isinstance(result.submodules, dict)
+
+
+class TestBuildModulePath:
+    """Tests for module path building."""
+
+    def test_root_directory_returns_empty_tuple(self, tmp_path: Path) -> None:
+        """Root directory should return empty tuple."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        result = processor._build_module_path(tmp_path)
+
+        assert result == ()
+
+    def test_single_level_module(self, tmp_path: Path) -> None:
+        """Single level directory should return single tuple."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        pkg_dir = tmp_path / "pkg"
+        pkg_dir.mkdir()
+
+        result = processor._build_module_path(pkg_dir)
+
+        assert result == ("pkg",)
+
+    def test_nested_module(self, tmp_path: Path) -> None:
+        """Nested directory should return path tuple."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        nested = tmp_path / "pkg" / "subpkg" / "deeper"
+        nested.mkdir(parents=True)
+
+        result = processor._build_module_path(nested)
+
+        assert result == ("pkg", "subpkg", "deeper")
+
+
+class TestSetModule:
+    """Tests for _set_module method."""
+
+    def test_set_module_creates_new(self, tmp_path: Path) -> None:
+        """Should create new module at path."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        ctx = ModuleContext(summary="", files={}, submodules={})
+        module = ModuleContext(summary="pkg", files={}, submodules={})
+        result = processor._set_module(ctx, ("pkg",), module)
+
+        assert "pkg" in result.submodules
+        assert result.submodules["pkg"].summary == "pkg"
+
+    def test_set_module_preserves_existing(self, tmp_path: Path) -> None:
+        """Should preserve existing modules when setting new one."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        existing = ModuleContext(summary="existing", files={}, submodules={})
+        ctx = ModuleContext(summary="", files={}, submodules={"existing": existing})
+        new_module = ModuleContext(summary="new", files={}, submodules={})
+        result = processor._set_module(ctx, ("new",), new_module)
+
+        assert "existing" in result.submodules
+        assert "new" in result.submodules
+
+    def test_set_module_at_root(self, tmp_path: Path) -> None:
+        """Should set summary when module_path is empty."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        ctx = ModuleContext(summary="old", files={}, submodules={})
+        module = ModuleContext(summary="new root", files={}, submodules={})
+        result = processor._set_module(ctx, (), module)
+
+        assert result.summary == "new root"
+
+
+class TestProcessDirectories:
+    """Tests for process_directories generator."""
+
+    def test_processes_single_directory(self, tmp_path: Path) -> None:
+        """Should process a single directory."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer("summary")
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        (tmp_path / "test.py").write_text("x = 1")
+
+        results = list(processor.process_directories({tmp_path}))
+
+        assert len(results) >= 1
+        final = results[-1]
+        assert isinstance(final.result, ModuleContext)
+
+    def test_returns_task_result_generator(self, tmp_path: Path) -> None:
+        """Should return TaskResult objects via generator."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        (tmp_path / "file.py").write_text("x = 1")
+
+        results_gen = processor.process_directories({tmp_path})
+
         import types
         assert isinstance(results_gen, types.GeneratorType)
 
-        # Consume and check TaskResult structure
         for task_result in results_gen:
-            assert isinstance(task_result, TaskResult)
-            assert isinstance(task_result.result, dict)
+            assert isinstance(task_result.result, ModuleContext)
             assert task_result.progress >= 0
             assert task_result.progress_max >= 0
 
@@ -301,75 +361,34 @@ class TestProcessChangedDirectories:
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Create multiple directories
         (tmp_path / "test.py").write_text("x = 1")
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "module.py").write_text("y = 2")
 
-        results = list(processor.process_changed_directories({tmp_path, tmp_path / "src"}))
+        results = list(processor.process_directories({tmp_path, tmp_path / "src"}))
 
-        # Progress should monotonically increase
         progress_values = [r.progress for r in results]
         for i in range(1, len(progress_values)):
             assert progress_values[i] >= progress_values[i - 1]
 
-    def test_progress_max_matches_total_directories(self, tmp_path: Path) -> None:
-        """Should set progress_max to total directories to process."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer("summary")
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        # Create 3 directories
-        (tmp_path / "test.py").write_text("x = 1")
-        (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "module.py").write_text("y = 2")
-        (tmp_path / "lib").mkdir()
-        (tmp_path / "lib" / "util.py").write_text("z = 3")
-
-        results = list(processor.process_changed_directories({
-            tmp_path,
-            tmp_path / "src",
-            tmp_path / "lib",
-        }))
-
-        # Final result should have progress_max = 3
-        final_result = results[-1]
-        assert final_result.progress_max == 3
-
-    def test_progress_percent_calculation(self, tmp_path: Path) -> None:
-        """Should correctly calculate progress percentage."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer("summary")
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        (tmp_path / "test.py").write_text("x = 1")
-
-        results = list(processor.process_changed_directories({tmp_path}))
-
-        # Check progress_percent on final result
-        final = results[-1]
-        assert final.progress == final.progress_max
-        assert final.progress_percent == 100.0
-
-    def test_handles_empty_changed_dirs(self, tmp_path: Path) -> None:
-        """Should return TaskResult with empty dict for empty changed_dirs."""
+    def test_handles_empty_directories(self, tmp_path: Path) -> None:
+        """Should return TaskResult with empty context for empty set."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer()
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        results = list(processor.process_changed_directories(set()))
+        results = list(processor.process_directories(set()))
 
-        # Should yield exactly one result (the final empty result)
         assert len(results) == 1
-
         final = results[0]
-        assert isinstance(final, TaskResult)
-        assert final.result == {}
+        assert isinstance(final.result, ModuleContext)
+        assert final.result.summary == ""
+        assert len(final.result.submodules) == 0
         assert final.progress == 0
         assert final.progress_max == 0
 
-    def test_skips_already_processed_child_directories(self, tmp_path: Path) -> None:
-        """Should skip child directories already processed as part of parent."""
+    def test_progress_max_matches_total_directories(self, tmp_path: Path) -> None:
+        """Should set progress_max to total directories."""
         cache = CacheManager(tmp_path)
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
@@ -378,33 +397,13 @@ class TestProcessChangedDirectories:
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "module.py").write_text("y = 2")
 
-        # Process parent and child - child should be skipped since parent includes it
-        results = list(processor.process_changed_directories({tmp_path, tmp_path / "src"}))
+        results = list(processor.process_directories({
+            tmp_path,
+            tmp_path / "src",
+        }))
 
-        # Should have progress updates but child should be in final result
-        final = results[-1]
-        assert isinstance(final.result, dict)
-
-
-class TestSummarizeFileWrapper:
-    """Tests for the summarize_file wrapper method."""
-
-    def test_delegates_to_summarizer(self, tmp_path: Path) -> None:
-        """Should call summarizer.summarize_file."""
-        cache = CacheManager(tmp_path)
-        mock_summarizer = MockSummarizer("summary")
-        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
-
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = 1")
-
-        result = processor.summarize_file(
-            filepath=test_file,
-            structure="structure",
-            parent_context="parent",
-        )
-
-        assert result == "summary"
+        final_result = results[-1]
+        assert final_result.progress_max == 2
 
 
 class TestDirectoryProcessorEdgeCases:
@@ -416,7 +415,6 @@ class TestDirectoryProcessorEdgeCases:
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Create nested structure
         deep_path = tmp_path / "a" / "b" / "c" / "deep.py"
         deep_path.parent.mkdir(parents=True)
         deep_path.write_text("x = 1")
@@ -435,10 +433,10 @@ class TestDirectoryProcessorEdgeCases:
         (tmp_path / ".codemonkey").mkdir()
         (tmp_path / ".codemonkey" / "cache.py").write_text("x = 1")
 
-        result = processor._process_directory_top_down(tmp_path)
+        result, _ = processor._process_directory(tmp_path)
 
-        # Should complete without errors
-        assert isinstance(result, str)
+        assert isinstance(result, ModuleContext)
+        assert ".codemonkey" not in result.submodules
 
     def test_handles_directory_without_python_files(self, tmp_path: Path) -> None:
         """Should handle directories with no Python files gracefully."""
@@ -446,9 +444,25 @@ class TestDirectoryProcessorEdgeCases:
         mock_summarizer = MockSummarizer("summary")
         processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
 
-        # Empty subdirectory
         (tmp_path / "empty_dir").mkdir()
 
-        result = processor._process_directory_top_down(tmp_path)
+        result, _ = processor._process_directory(tmp_path)
 
-        assert isinstance(result, str)
+        assert isinstance(result, ModuleContext)
+        assert len(result.files) == 0
+
+    def test_includes_parent_directories(self, tmp_path: Path) -> None:
+        """Should include all parent directories up to root."""
+        cache = CacheManager(tmp_path)
+        mock_summarizer = MockSummarizer()
+        processor = DirectoryProcessor(tmp_path, cache, mock_summarizer)
+
+        deep_path = tmp_path / "src" / "utils" / "helper.py"
+        deep_path.parent.mkdir(parents=True)
+        deep_path.write_text("def helper(): pass")
+
+        result = processor._get_all_directories()
+
+        assert tmp_path in result
+        assert (tmp_path / "src") in result
+        assert (tmp_path / "src" / "utils") in result

@@ -158,10 +158,9 @@ class ProjectMapper:
             New ModuleContext with module set.
         """
         if not module_path:
-            # Setting root_summary
+            # Setting root summary on root ModuleContext
             return ModuleContext(
-                root_summary=module.summary,
-                summary="",
+                summary=module.summary,
                 files={},
                 submodules=ctx.submodules
             )
@@ -170,7 +169,6 @@ class ProjectMapper:
         new_submodules: dict[str, ModuleContext] = {}
         for name, mod in ctx.submodules.items():
             new_submodules[name] = ModuleContext(
-                root_summary=mod.root_summary,
                 summary=mod.summary,
                 files=dict(mod.files),
                 submodules=dict(mod.submodules),
@@ -181,7 +179,6 @@ class ProjectMapper:
             if name not in current:
                 # Create missing parent
                 current[name] = ModuleContext(
-                    root_summary="",
                     summary="",
                     files={},
                     submodules={},
@@ -190,7 +187,6 @@ class ProjectMapper:
             new_inner_submodules: dict[str, ModuleContext] = {}
             for subname, submod in parent.submodules.items():
                 new_inner_submodules[subname] = ModuleContext(
-                    root_summary=submod.root_summary,
                     summary=submod.summary,
                     files=dict(submod.files),
                     submodules=dict(submod.submodules),
@@ -202,8 +198,7 @@ class ProjectMapper:
         current[final_name] = module
 
         return ModuleContext(
-            root_summary=ctx.root_summary,
-            summary="",
+            summary=ctx.summary,
             files={},
             submodules=new_submodules
         )
@@ -329,7 +324,7 @@ class ProjectMapper:
         # Progress points: 1 (initial scan) + N (directory processing) + 1 (project context)
         yield TaskResult(
             result=ProjectMapperResult(
-                code_context=ModuleContext(root_summary="", summary="", files={}, submodules={}),
+                code_context=ModuleContext(summary="", files={}, submodules={}),
                 project_context="",
             ),
             progress=0,
@@ -391,7 +386,7 @@ class ProjectMapper:
         # Mark initial scan complete
         yield TaskResult(
             result=ProjectMapperResult(
-                code_context=ModuleContext(root_summary="", summary="", files={}, submodules={}),
+                code_context=ModuleContext(summary="", files={}, submodules={}),
                 project_context="",
             ),
             progress=1,
@@ -405,7 +400,7 @@ class ProjectMapper:
 
         # Copy existing context for modification
         if existing_context is None:
-            current_context = ModuleContext(root_summary="", summary="", files={}, submodules={})
+            current_context = ModuleContext(summary="", files={}, submodules={})
         else:
             current_context = existing_context
 
@@ -434,8 +429,7 @@ class ProjectMapper:
                 current_context, project_name=self.root.name
             )
             current_context = ModuleContext(
-                root_summary=root_summary,
-                summary="",
+                summary=root_summary,
                 files={},
                 submodules=current_context.submodules,
             )
