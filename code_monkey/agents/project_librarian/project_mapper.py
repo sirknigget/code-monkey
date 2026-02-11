@@ -94,10 +94,9 @@ class ProjectMapper:
         for submodule_name, submodule in module.submodules.items():
             sub_dir = current_dir / submodule_name
             self._summarize_bottom_up(submodule, sub_dir)
-            if submodule.summary is not None:
-                submodule_infos.append(
-                    Summarizer.FileInfo(filepath=sub_dir, summary=submodule.summary)
-                )
+            submodule_infos.append(
+                Summarizer.FileInfo(filepath=sub_dir, summary=submodule.summary)
+            )
 
         # 2. Summarize files that need it
         file_infos: list[Summarizer.FileInfo] = []
