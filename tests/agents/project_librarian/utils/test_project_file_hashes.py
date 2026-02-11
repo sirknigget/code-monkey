@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from code_monkey.agents.project_librarian.utils.project_file_hashes import (
+    Hashes,
     ProjectFileHashes,
 )
 
@@ -17,14 +18,20 @@ CACHE_MANAGER = "code_monkey.agents.project_librarian.utils.project_file_hashes.
 class TestProjectFileHashesLoad:
     """Tests for ProjectFileHashes.load()."""
 
-    def test_all_files_unchanged_returns_empty_dict(self) -> None:
-        """When current hashes match cached hashes exactly, returns empty dict."""
-        file_a = Path("/fake/project/a.py")
-        file_b = Path("/fake/project/b.py")
+    def test_all_files_unchanged_returns_empty_modified_only(self) -> None:
+        """When current hashes match cached hashes exactly, modified_only is empty."""
+        file_a = Path("a.py")
+        file_b = Path("b.py")
 
         with (
-            patch(DISCOVER, return_value=[file_a, file_b]) as mock_discover,
-            patch(COMPUTE, side_effect=lambda p: {file_a: "hash_a", file_b: "hash_b"}[p]),
+            patch(DISCOVER, return_value=[file_a, file_b]),
+            patch(
+                COMPUTE,
+                side_effect=lambda p: {
+                    WORKING_DIR / file_a: "hash_a",
+                    WORKING_DIR / file_b: "hash_b",
+                }[p],
+            ),
             patch(CACHE_MANAGER) as mock_cm_cls,
         ):
             mock_cm_cls.return_value.load_hashes.return_value = {
@@ -34,11 +41,14 @@ class TestProjectFileHashesLoad:
 
             result = ProjectFileHashes(WORKING_DIR).load()
 
-        assert result == {}
+        assert result == Hashes(
+            modified_only={},
+            current={str(file_a): "hash_a", str(file_b): "hash_b"},
+        )
 
     def test_new_file_added_returned_with_hash(self) -> None:
-        """A file present on disk but absent from cache is returned with its current hash."""
-        new_file = Path("/fake/project/new.py")
+        """A file present on disk but absent from cache appears in modified_only and current."""
+        new_file = Path("new.py")
 
         with (
             patch(DISCOVER, return_value=[new_file]),
@@ -49,11 +59,14 @@ class TestProjectFileHashesLoad:
 
             result = ProjectFileHashes(WORKING_DIR).load()
 
-        assert result == {str(new_file): "hash_new"}
+        assert result == Hashes(
+            modified_only={str(new_file): "hash_new"},
+            current={str(new_file): "hash_new"},
+        )
 
     def test_modified_file_returned_with_new_hash(self) -> None:
-        """A file whose hash differs from the cached value is returned with its new hash."""
-        file = Path("/fake/project/changed.py")
+        """A file whose hash differs from cached value appears in modified_only with new hash."""
+        file = Path("changed.py")
 
         with (
             patch(DISCOVER, return_value=[file]),
@@ -66,11 +79,14 @@ class TestProjectFileHashesLoad:
 
             result = ProjectFileHashes(WORKING_DIR).load()
 
-        assert result == {str(file): "hash_new"}
+        assert result == Hashes(
+            modified_only={str(file): "hash_new"},
+            current={str(file): "hash_new"},
+        )
 
     def test_deleted_file_returned_mapped_to_none(self) -> None:
-        """A file present in cache but absent from disk is returned mapped to None."""
-        deleted_file = "/fake/project/deleted.py"
+        """A file present in cache but absent from disk appears in modified_only mapped to None."""
+        deleted_file = "deleted.py"
 
         with (
             patch(DISCOVER, return_value=[]),
@@ -83,19 +99,22 @@ class TestProjectFileHashesLoad:
 
             result = ProjectFileHashes(WORKING_DIR).load()
 
-        assert result == {deleted_file: None}
+        assert result == Hashes(
+            modified_only={deleted_file: None},
+            current={},
+        )
 
-    def test_mixed_changes_returns_only_changed_files(self) -> None:
-        """Only added, modified, and deleted files are returned; unchanged files are omitted."""
-        unchanged = Path("/fake/project/unchanged.py")
-        added = Path("/fake/project/added.py")
-        modified = Path("/fake/project/modified.py")
-        deleted_path = "/fake/project/deleted.py"
+    def test_mixed_changes(self) -> None:
+        """modified_only contains only changed files; current contains all discovered files."""
+        unchanged = Path("unchanged.py")
+        added = Path("added.py")
+        modified = Path("modified.py")
+        deleted_path = "deleted.py"
 
         hash_map = {
-            unchanged: "hash_unchanged",
-            added: "hash_added",
-            modified: "hash_modified_new",
+            WORKING_DIR / unchanged: "hash_unchanged",
+            WORKING_DIR / added: "hash_added",
+            WORKING_DIR / modified: "hash_modified_new",
         }
 
         with (
@@ -111,11 +130,18 @@ class TestProjectFileHashesLoad:
 
             result = ProjectFileHashes(WORKING_DIR).load()
 
-        assert result == {
-            str(added): "hash_added",
-            str(modified): "hash_modified_new",
-            deleted_path: None,
-        }
+        assert result == Hashes(
+            modified_only={
+                str(added): "hash_added",
+                str(modified): "hash_modified_new",
+                deleted_path: None,
+            },
+            current={
+                str(unchanged): "hash_unchanged",
+                str(added): "hash_added",
+                str(modified): "hash_modified_new",
+            },
+        )
 
 
 class TestProjectFileHashesSave:
@@ -124,8 +150,8 @@ class TestProjectFileHashesSave:
     def test_delegates_to_cache_manager_save_hashes(self) -> None:
         """save() passes the provided hashes to CacheManager.save_hashes."""
         hashes = {
-            "/fake/project/a.py": "hash_a",
-            "/fake/project/b.py": "hash_b",
+            "a.py": "hash_a",
+            "b.py": "hash_b",
         }
 
         with patch(CACHE_MANAGER) as mock_cm_cls:

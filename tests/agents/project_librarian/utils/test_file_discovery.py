@@ -21,10 +21,10 @@ class TestDiscoverPythonFiles:
         # Discover files
         result = discover_python_files(tmp_path)
 
-        # Verify both files found
+        # Verify both files found as relative paths
         assert len(result) == 2
-        assert (tmp_path / "root_file.py") in result
-        assert (tmp_path / "subdir" / "nested_file.py") in result
+        assert Path("root_file.py") in result
+        assert Path("subdir/nested_file.py") in result
 
     def test_excludes_git_directory(self, tmp_path: Path) -> None:
         """Verify .git directory contents are excluded."""
@@ -38,8 +38,8 @@ class TestDiscoverPythonFiles:
 
         # Only root file should be found
         assert len(result) == 1
-        assert (tmp_path / "main.py") in result
-        assert (git_dir / "config.py") not in result
+        assert Path("main.py") in result
+        assert Path(".git/config.py") not in result
 
     def test_excludes_venv_directory(self, tmp_path: Path) -> None:
         """Verify venv directory contents are excluded."""
@@ -55,7 +55,7 @@ class TestDiscoverPythonFiles:
 
         # Only root file should be found
         assert len(result) == 1
-        assert (tmp_path / "app.py") in result
+        assert Path("app.py") in result
 
     def test_excludes_pycache_directory(self, tmp_path: Path) -> None:
         """Verify __pycache__ directory contents are excluded."""
@@ -69,7 +69,7 @@ class TestDiscoverPythonFiles:
 
         # Only root file should be found
         assert len(result) == 1
-        assert (tmp_path / "module.py") in result
+        assert Path("module.py") in result
 
     def test_returns_sorted_list(self, tmp_path: Path) -> None:
         """Verify returned list is sorted alphabetically."""

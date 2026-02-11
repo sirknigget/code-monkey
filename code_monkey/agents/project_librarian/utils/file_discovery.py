@@ -49,6 +49,6 @@ def discover_python_files(
     """
     all_files: Iterator[Path] = root.glob(pattern)
     return sorted(
-        f for f in all_files
+        f.relative_to(root) for f in all_files
         if f.is_file() and not any(part in exclude_dirs for part in f.parts)
     )

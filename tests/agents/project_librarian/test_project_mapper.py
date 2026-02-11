@@ -10,6 +10,7 @@ import pytest
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
+from code_monkey.agents.project_librarian.utils.project_file_hashes import Hashes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,7 +59,7 @@ class TestNoChanges:
             patch(PATCH_HASHES) as mock_hashes,
             patch(PATCH_CACHE) as mock_cache,
         ):
-            mock_hashes.return_value.load.return_value = {}
+            mock_hashes.return_value.load.return_value = Hashes(modified_only={}, current={})
             mock_cache.return_value.load_code_context.return_value = cached_context
 
             result = ProjectMapper(tmp_path, summarizer).map_modules()
@@ -93,15 +94,15 @@ class TestFirstRun:
         summarizer.summarize_module.return_value = "module-summary"
 
         modified_files: dict[str, str | None] = {
-            str(tmp_path / "main.py"): "hash-main",
-            str(pkg_dir / "mod.py"): "hash-mod",
+            "main.py": "hash-main",
+            "pkg/mod.py": "hash-mod",
         }
 
         with (
             patch(PATCH_HASHES) as mock_hashes,
             patch(PATCH_CACHE) as mock_cache,
         ):
-            mock_hashes.return_value.load.return_value = modified_files
+            mock_hashes.return_value.load.return_value = Hashes(modified_only=modified_files, current={})
             mock_cache.return_value.load_code_context.return_value = None
 
             result = ProjectMapper(tmp_path, summarizer).map_modules()
@@ -148,14 +149,14 @@ class TestModifiedFile:
         summarizer.summarize_module.return_value = "pkg-new-summary"
 
         modified_files: dict[str, str | None] = {
-            str(pkg_dir / "changed.py"): "new-hash",
+            "pkg/changed.py": "new-hash",
         }
 
         with (
             patch(PATCH_HASHES) as mock_hashes,
             patch(PATCH_CACHE) as mock_cache,
         ):
-            mock_hashes.return_value.load.return_value = modified_files
+            mock_hashes.return_value.load.return_value = Hashes(modified_only=modified_files, current={})
             mock_cache.return_value.load_code_context.return_value = cached_context
 
             result = ProjectMapper(tmp_path, summarizer).map_modules()
@@ -205,14 +206,14 @@ class TestDeletedFile:
         summarizer.summarize_module.return_value = "pkg-new-summary"
 
         modified_files: dict[str, str | None] = {
-            str(pkg_dir / "deleted.py"): None,
+            "pkg/deleted.py": None,
         }
 
         with (
             patch(PATCH_HASHES) as mock_hashes,
             patch(PATCH_CACHE) as mock_cache,
         ):
-            mock_hashes.return_value.load.return_value = modified_files
+            mock_hashes.return_value.load.return_value = Hashes(modified_only=modified_files, current={})
             mock_cache.return_value.load_code_context.return_value = cached_context
 
             result = ProjectMapper(tmp_path, summarizer).map_modules()
@@ -260,15 +261,15 @@ class TestBottomUpOrder:
         summarizer.summarize_module.side_effect = record_module
 
         modified_files: dict[str, str | None] = {
-            str(sub_dir / "deep.py"): "h1",
-            str(pkg_dir / "top.py"): "h2",
+            "pkg/sub/deep.py": "h1",
+            "pkg/top.py": "h2",
         }
 
         with (
             patch(PATCH_HASHES) as mock_hashes,
             patch(PATCH_CACHE) as mock_cache,
         ):
-            mock_hashes.return_value.load.return_value = modified_files
+            mock_hashes.return_value.load.return_value = Hashes(modified_only=modified_files, current={})
             mock_cache.return_value.load_code_context.return_value = None
 
             ProjectMapper(tmp_path, summarizer).map_modules()

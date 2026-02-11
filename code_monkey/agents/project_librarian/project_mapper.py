@@ -30,10 +30,10 @@ class ProjectMapper:
         Returns:
             A fully-summarized ModuleContext tree rooted at working_dir.
         """
-        modified_files = ProjectFileHashes(self.working_dir).load()
+        hashes = ProjectFileHashes(self.working_dir).load()
         cached_context = CacheManager(self.working_dir).load_code_context()
 
-        context = self._build_revised_context(modified_files, cached_context)
+        context = self._build_revised_context(hashes.modified_only, cached_context)
         self._summarize_bottom_up(context, self.working_dir)
         return context
 
@@ -52,14 +52,8 @@ class ProjectMapper:
         else:
             root = ModuleContext(summary=None)
 
-        for abs_path_str, hash_val in modified_files.items():
-            abs_path = Path(abs_path_str)
-            try:
-                rel = abs_path.relative_to(self.working_dir)
-            except ValueError:
-                # File is outside working_dir — skip
-                continue
-
+        for rel_path_str, hash_val in modified_files.items():
+            rel = Path(rel_path_str)
             parts = rel.parts  # e.g. ("pkg", "sub", "mod.py")
             if not parts:
                 continue
