@@ -11,6 +11,9 @@ from code_monkey.agents.project_librarian.types import FileContext, ModuleContex
 from code_monkey.agents.project_librarian.utils.project_file_hashes import (
     ProjectFileHashes,
 )
+from code_monkey.agents.project_librarian.utils.project_structure import (
+    ProjectStructure,
+)
 
 
 class ProjectMapper:
@@ -24,18 +27,31 @@ class ProjectMapper:
         self.working_dir = working_dir
         self.summarizer = summarizer
 
-    def map_modules(self) -> ModuleContext:
-        """Build (or incrementally update) the module context tree.
+    def map_project(self) -> None:
+        """Build (or incrementally update) the full project context and persist it.
 
-        Returns:
-            A fully-summarized ModuleContext tree rooted at working_dir.
+        Summarizes changed files and modules bottom-up, then builds a project-level
+        structure string and summary, and saves all outputs to the cache.  File
+        hashes are saved last so that a partial write never leaves the cache in an
+        inconsistent state.
         """
         hashes = ProjectFileHashes(self.working_dir).load()
-        cached_context = CacheManager(self.working_dir).load_code_context()
+        cache = CacheManager(self.working_dir)
+        cached_context = cache.load_code_context()
 
         context = self._build_revised_context(hashes.modified_only, cached_context)
         self._summarize_bottom_up(context, self.working_dir)
-        return context
+
+        project_structure = ProjectStructure(self.working_dir).build()
+        project_summary = self.summarizer.summarize_project(
+            project_structure=project_structure,
+            code_context=context,
+            project_name=self.working_dir.name,
+        )
+
+        cache.save_code_context(context)
+        cache.save_project_context(project_summary)
+        cache.save_hashes(hashes.current)
 
     # ------------------------------------------------------------------
     # Private helpers

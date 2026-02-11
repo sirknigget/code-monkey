@@ -1,6 +1,5 @@
 """Tests for code parsing utilities."""
 
-import pytest
 
 from code_monkey.agents.project_librarian.utils.code_parser import parse_python_code, ParsedCode, CodeNode
 

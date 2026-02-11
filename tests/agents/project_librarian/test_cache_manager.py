@@ -1,8 +1,6 @@
 """Tests for CacheManager and context models."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
