@@ -6,45 +6,67 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 code-monkey is a LangGraph-based coding assistant with project context awareness. It uses a multi-agent architecture where specialized agents collaborate on development tasks.
 
-## Architecture
-
-The system uses three specialized LangGraph agents:
-
-1. **Web Researcher** - Handles research tasks using Google search and Playwright, produces summaries
-2. **Project Librarian** - Scans project files, computes file hashes for caching, and generates context summaries
-3. **Lead Developer** - Core developer agent with file system access and CLI tools; file writes pass through a security reviewer first
-
-### Cache Infrastructure (planned)
-- `.codemonkey/file-hashes` - File hash cache for change detection
-- `.codemonkey/code-context` - Per-file summaries (signatures, classes)
-- `.codemonkey/project-context` - Global project context summary
-
 ## Development Commands
 
 ```bash
 # Install dependencies
 uv sync
 
-# Run the application
-uv run python main.py
+# Run tests
+uv run pytest
+
+# Run a specific test file
+uv run pytest tests/agents/project_librarian/test_project_mapper.py -v
+
+# Run tests for a module
+uv run pytest tests/agents/project_librarian/ -v
+
+# Lint
+uv run ruff check .
+uv run ruff format .
 
 # Add new dependencies
 uv add <package>
-
-# Run tests (when added)
-uv run pytest
 ```
 
-## Dependencies
+## Architecture
 
-The project uses LangChain and LangGraph for LLM orchestration:
-- `langchain` - LLM framework
-- `langchain-anthropic` - Anthropic integration
-- `langchain-openai` - OpenAI integration
-- `langgraph` - Agent orchestration
+Two active agents under `code_monkey/agents/`:
 
-## Key Implementation Details
+### Web Researcher (`agents/web_researcher/`)
 
-- Python 3.12+ required
-- Uses `uv` for package management
-- Entry point: `main.py`
+Performs web research using Google Serper API and Playwright browser automation. Async agent built on LangChain tool-calling.
+
+### Project Librarian (`agents/project_librarian/`)
+
+Analyzes a project's codebase incrementally and builds a context summary tree. Key flow:
+
+1. Discover Python files and compute SHA-256 hashes
+2. Compare against cached hashes to find changed files
+3. Parse changed files with AST to extract classes/functions
+4. Re-summarize changed files → modules → parent modules (bottom-up)
+5. Persist updated hashes and context to `.codemonkey/`
+
+Key classes:
+
+- `ProjectMapper` — orchestrates the full scan-diff-summarize cycle
+- `Summarizer` — LLM-based summarization at file, module, and project levels
+- `CacheManager` — atomic reads/writes of `.codemonkey/` cache files
+- `CodeExtractor` — AST-based extraction of classes and functions (2 levels deep)
+- `ProjectFileHashes` — tracks per-file SHA-256 hashes with change detection
+
+### Cache Layout (`.codemonkey/`)
+
+```
+file_hashes.json     # {relative_path: sha256_hash}
+code_context.json    # ModuleContext tree (summaries per file/module)
+project_context.md   # Full project overview text
+```
+
+## Models
+
+`code_monkey/models/models.py` provides `get_openai_model()` (default `gpt-4o`) and `get_minimax_model()` (MiniMax via Anthropic-compatible API).
+
+## Testing
+
+Tests mirror source structure under `tests/`. Fixtures for temporary directories and mock project templates are in `tests/conftest.py`. The `mock_project/` directory contains sample Python files used for integration-style tests.
