@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-import fnmatch
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.utils.constants import IGNORED_DIRS
+from code_monkey.agents.project_librarian.utils.gitignore import (
+    is_gitignore_match,
+    load_gitignore_patterns,
+)
 
 # Tree drawing characters
 _BRANCH = "├── "
@@ -23,7 +26,7 @@ class ProjectStructure:
 
     def __init__(self, root: Path) -> None:
         self.root = root
-        self._gitignore_patterns: list[str] = self._load_gitignore_patterns()
+        self._gitignore_patterns: list[str] = load_gitignore_patterns(root)
 
     # ------------------------------------------------------------------
     # Public API
@@ -43,24 +46,6 @@ class ProjectStructure:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _load_gitignore_patterns(self) -> list[str]:
-        """Load ignore patterns from .gitignore at the project root."""
-        gitignore = self.root / ".gitignore"
-        if not gitignore.exists():
-            return []
-
-        patterns: list[str] = []
-        try:
-            for line in gitignore.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                # Skip comments and empty lines; skip negation (!) — too complex
-                if not line or line.startswith("#") or line.startswith("!"):
-                    continue
-                patterns.append(line)
-        except OSError:
-            pass
-        return patterns
-
     def _is_ignored(self, path: Path) -> bool:
         """Return True if path should be excluded from the structure."""
         name = path.name
@@ -69,26 +54,13 @@ class ProjectStructure:
             return True
 
         if self._gitignore_patterns:
-            # Build relative path string from root for matching
             try:
                 rel = str(path.relative_to(self.root))
             except ValueError:
                 rel = name
 
-            for pattern in self._gitignore_patterns:
-                # Strip trailing slash for directory patterns
-                clean = pattern.rstrip("/")
-
-                # Match against name alone or relative path
-                if fnmatch.fnmatch(name, clean):
-                    return True
-                if fnmatch.fnmatch(rel, clean):
-                    return True
-                # Handle ** by also matching trailing portion
-                if "**" in clean:
-                    glob_pat = clean.replace("**/", "").replace("**", "*")
-                    if fnmatch.fnmatch(name, glob_pat):
-                        return True
+            if is_gitignore_match(name, rel, self._gitignore_patterns):
+                return True
 
         return False
 

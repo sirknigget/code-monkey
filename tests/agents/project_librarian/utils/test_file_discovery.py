@@ -111,3 +111,25 @@ class TestDiscoverPythonFiles:
         result = discover_python_files(tmp_path, exclude_dirs=frozenset({"custom_excluded"}))
 
         assert result == [Path("main.py")]
+
+    def test_gitignore_excludes_matching_file(self, tmp_path: Path) -> None:
+        """Verify files matched by .gitignore patterns are excluded."""
+        (tmp_path / "app.py").touch()
+        (tmp_path / "local.py").touch()
+        (tmp_path / ".gitignore").write_text("local.py\n", encoding="utf-8")
+
+        result = discover_python_files(tmp_path)
+
+        assert result == [Path("app.py")]
+
+    def test_gitignore_excludes_files_inside_ignored_directory(self, tmp_path: Path) -> None:
+        """Verify Python files inside a gitignored directory are excluded."""
+        (tmp_path / "service.py").touch()
+        vendor = tmp_path / "vendor"
+        vendor.mkdir()
+        (vendor / "helper.py").touch()
+        (tmp_path / ".gitignore").write_text("vendor/\n", encoding="utf-8")
+
+        result = discover_python_files(tmp_path)
+
+        assert result == [Path("service.py")]
