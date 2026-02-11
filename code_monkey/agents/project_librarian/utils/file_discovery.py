@@ -3,39 +3,13 @@
 from pathlib import Path
 from typing import Iterator
 
-
-# Directories to exclude when discovering files.
-# Includes version control, virtual environments, Python caches, and build artifacts.
-EXCLUDED_DIRS: frozenset[str] = frozenset({
-    # Version control
-    '.git',
-    '.svn',
-    '.hg',
-    # Virtual environments
-    'venv',
-    '.venv',
-    'env',
-    '.env',
-    # Python caches and tools
-    '__pycache__',
-    '.pytest_cache',
-    '.tox',
-    '.nox',
-    '.mypy_cache',
-    # JavaScript dependencies
-    'node_modules',
-    'bower_components',
-    # Build artifacts
-    'dist',
-    'build',
-    '.egg-info',
-})
+from code_monkey.agents.project_librarian.utils.constants import IGNORED_DIRS
 
 
 def discover_python_files(
     root: Path,
     pattern: str = "**/*.py",
-    exclude_dirs: frozenset[str] = EXCLUDED_DIRS,
+    exclude_dirs: frozenset[str] = IGNORED_DIRS,
 ) -> list[Path]:
     """Discover Python files matching pattern, excluding specified directories.
 

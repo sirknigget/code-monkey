@@ -5,42 +5,7 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
-
-# Directories and file patterns to always exclude regardless of .gitignore.
-PYTHON_IGNORE: frozenset[str] = frozenset(
-    {
-        # Version control
-        ".git",
-        ".svn",
-        ".hg",
-        # Virtual environments
-        "venv",
-        ".venv",
-        "env",
-        ".env",
-        # Python caches and tools
-        "__pycache__",
-        ".pytest_cache",
-        ".tox",
-        ".nox",
-        ".mypy_cache",
-        ".ruff_cache",
-        # JavaScript dependencies
-        "node_modules",
-        "bower_components",
-        # Build artifacts
-        "dist",
-        "build",
-        ".egg-info",
-        # IDE / editor
-        ".idea",
-        ".vscode",
-        # macOS metadata
-        ".DS_Store",
-        # codemonkey cache
-        ".codemonkey",
-    }
-)
+from code_monkey.agents.project_librarian.utils.constants import IGNORED_DIRS
 
 # Tree drawing characters
 _BRANCH = "├── "
@@ -52,7 +17,7 @@ _SPACE = "    "
 class ProjectStructure:
     """Builds an LLM-friendly string representation of a project directory tree.
 
-    Excludes entries matched by the predefined PYTHON_IGNORE list and any
+    Excludes entries matched by the predefined IGNORED_DIRS list and any
     patterns found in a .gitignore file at the project root.
     """
 
@@ -100,7 +65,7 @@ class ProjectStructure:
         """Return True if path should be excluded from the structure."""
         name = path.name
 
-        if name in PYTHON_IGNORE:
+        if name in IGNORED_DIRS:
             return True
 
         if self._gitignore_patterns:

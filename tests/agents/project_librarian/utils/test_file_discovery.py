@@ -84,8 +84,30 @@ class TestDiscoverPythonFiles:
         assert result == sorted(result)
         assert [f.name for f in result] == ["apple.py", "banana.py", "zebra.py"]
 
+    def test_excludes_codemonkey_cache_directory(self, tmp_path: Path) -> None:
+        """Verify .codemonkey cache directory contents are excluded."""
+        (tmp_path / "service.py").touch()
+        cache_dir = tmp_path / ".codemonkey"
+        cache_dir.mkdir()
+        (cache_dir / "helper.py").touch()
+
+        result = discover_python_files(tmp_path)
+
+        assert result == [Path("service.py")]
+
     def test_empty_directory_returns_empty_list(self, tmp_path: Path) -> None:
         """Verify empty directory returns empty list."""
         result = discover_python_files(tmp_path)
 
         assert result == []
+
+    def test_custom_exclude_dirs_override_default(self, tmp_path: Path) -> None:
+        """Verify caller-supplied exclude_dirs replaces the default."""
+        (tmp_path / "main.py").touch()
+        custom_dir = tmp_path / "custom_excluded"
+        custom_dir.mkdir()
+        (custom_dir / "internal.py").touch()
+
+        result = discover_python_files(tmp_path, exclude_dirs=frozenset({"custom_excluded"}))
+
+        assert result == [Path("main.py")]
