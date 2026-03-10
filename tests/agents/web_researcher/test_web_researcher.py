@@ -1,9 +1,10 @@
 import logging
+
 import pytest
 from dotenv import load_dotenv
 
 from code_monkey.agents.web_researcher.web_researcher import WebResearcher
-from code_monkey.models.models import get_minimax_model
+from code_monkey.models.models import get_minimax_model, get_openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ load_dotenv(override=True)
 @pytest.mark.asyncio
 async def test_web_researcher_search():
     """Test the WebResearcher agent with a query about LangChain."""
-    model = get_minimax_model()
+    model = get_openai_model()
     researcher = await WebResearcher.create(model=model, headless=True)
 
     query = "What is the latest price of BTC and its recent trend?"

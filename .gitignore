@@ -208,3 +208,6 @@ __marimo__/
 .idea
 
 .claude/settings.local.json
+
+# Real LLM integration test output (left for manual inspection)
+tests/output/

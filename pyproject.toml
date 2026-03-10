@@ -21,6 +21,9 @@ dependencies = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 norecursedir = [".env", ".git", ".venv"]
+markers = [
+    "real_llm: marks tests that make real LLM API calls (excluded from default run; run with -m real_llm)",
+]
 
 [dependency-groups]
 dev = [
