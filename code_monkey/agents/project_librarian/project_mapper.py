@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import functools
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
@@ -40,7 +42,7 @@ class ProjectMapper:
         cached_context = cache.load_code_context()
 
         context = self._build_revised_context(hashes.modified_only, cached_context)
-        self._summarize_bottom_up(context, self.working_dir)
+        asyncio.run(self._summarize_bottom_up(context, self.working_dir))
 
         project_structure = ProjectStructure(self.working_dir).build()
         project_summary = self.summarizer.summarize_project(
@@ -96,42 +98,58 @@ class ProjectMapper:
 
         return root
 
-    def _summarize_bottom_up(
+    async def _summarize_bottom_up(
         self, module: ModuleContext, current_dir: Path
-    ) -> list[Summarizer.FileInfo]:
-        """Recursively summarize module tree bottom-up.
+    ) -> None:
+        """Recursively summarize module tree bottom-up with parallelism.
 
-        Returns:
-            List of FileInfo for all files directly in this module (used by
-            parent for module summarization).
+        Submodules within a module and files within a module are summarized
+        in parallel. A module's own summary is computed only after all its
+        files and submodules have been summarized.
         """
-        # 1. Recurse into submodules first (bottom-up)
-        submodule_infos: list[Summarizer.FileInfo] = []
-        for submodule_name, submodule in module.submodules.items():
-            sub_dir = current_dir / submodule_name
-            self._summarize_bottom_up(submodule, sub_dir)
-            submodule_infos.append(
-                Summarizer.FileInfo(filepath=sub_dir, summary=submodule.summary)
+        loop = asyncio.get_running_loop()
+        submodule_items = list(module.submodules.items())
+
+        async def _summarize_file(filename: str, file_ctx: FileContext) -> None:
+            if file_ctx.summary is not None:
+                return
+            filepath = current_dir / filename
+            try:
+                code = await loop.run_in_executor(
+                    None, functools.partial(filepath.read_text, encoding="utf-8")
+                )
+            except OSError:
+                return
+            file_ctx.summary = await loop.run_in_executor(
+                None, self.summarizer.summarize_file, filepath, code
             )
 
-        # 2. Summarize files that need it
-        file_infos: list[Summarizer.FileInfo] = []
-        for filename, file_ctx in module.files.items():
-            filepath = current_dir / filename
-            if file_ctx.summary is None:
-                try:
-                    code = filepath.read_text(encoding="utf-8")
-                except OSError:
-                    continue
-                file_ctx.summary = self.summarizer.summarize_file(filepath, code)
-            file_infos.append(
-                Summarizer.FileInfo(filepath=filepath, summary=file_ctx.summary)
-            )
+        # Recurse into submodules and summarize files in parallel.
+        # A module's own summary depends on both, so it is computed after this gather.
+        await asyncio.gather(
+            *[
+                self._summarize_bottom_up(submodule, current_dir / name)
+                for name, submodule in submodule_items
+            ],
+            *[
+                _summarize_file(filename, file_ctx)
+                for filename, file_ctx in module.files.items()
+            ],
+        )
+
+        submodule_infos = [
+            Summarizer.FileInfo(filepath=current_dir / name, summary=submodule.summary)
+            for name, submodule in submodule_items
+        ]
+
+        file_infos = [
+            Summarizer.FileInfo(filepath=current_dir / filename, summary=file_ctx.summary)
+            for filename, file_ctx in module.files.items()
+            if file_ctx.summary is not None
+        ]
 
         # 3. Summarize module itself if invalidated
         if module.summary is None:
-            module.summary = self.summarizer.summarize_module(
-                current_dir, file_infos, submodule_infos
+            module.summary = await loop.run_in_executor(
+                None, self.summarizer.summarize_module, current_dir, file_infos, submodule_infos
             )
-
-        return file_infos

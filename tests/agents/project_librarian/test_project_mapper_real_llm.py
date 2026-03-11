@@ -15,6 +15,7 @@ at the START of each test, not the end.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -43,61 +44,6 @@ MOCK_PROJECT_NAME = "crewai_trading_strategy"
 _OUTPUT_DIR = Path("tests/output/real_llm_integration")
 _WORKING_DIR = _OUTPUT_DIR / MOCK_PROJECT_NAME
 
-# Expected LLM call sequences derived from the mock project structure and the
-# bottom-up traversal order in ProjectMapper._summarize_bottom_up.
-#
-# File discovery returns paths sorted alphabetically. The module tree is built
-# in that insertion order. Traversal: recurse submodules first, then summarize
-# each file in the module, then summarize the module itself. Project summary
-# is always last.
-_EXPECTED_INITIAL_CALLS = [
-    "file",
-    "module",  # output/ (1 file)
-    "file",
-    "module",  # crews/dummy_developer_crew/ (1 file)
-    "file",
-    "module",  # crews/trading_strategy_crew/ (1 file)
-    "module",  # crews/ (no direct files)
-    "file",
-    "module",  # guardrails/ (1 file)
-    "file",
-    "file",
-    "file",
-    "file",
-    "file",
-    "module",  # tools/ (5 files)
-    "file",
-    "file",
-    "file",
-    "file",
-    "file",
-    "module",  # crewai_trading_strategy/ (5 files)
-    "file",
-    "file",
-    "file",
-    "file",
-    "file",
-    "file",
-    "module",  # src/utils/ (6 files)
-    "module",  # src/ (no direct files)
-    "file",
-    "file",
-    "file",
-    "module",  # tests/ (3 files)
-    "module",  # root (no direct files)
-    "project",
-]
-
-_EXPECTED_SECOND_CALLS = [
-    "file",
-    "module",  # constants.py re-summarised → crewai_trading_strategy/ re-summarised
-    "file",
-    "module",  # new_helper.py summarised → src/utils/ re-summarised
-    "module",  # src/ re-summarised
-    "module",  # root re-summarised
-    "project",
-]
-
 
 # ---------------------------------------------------------------------------
 # Call-logging model wrapper
@@ -105,15 +51,20 @@ _EXPECTED_SECOND_CALLS = [
 
 
 class LLMCallLogger(BaseCallbackHandler):
-    """LangChain callback that records each chat-model invocation type.
+    """LangChain callback that records each chat-model invocation with its path.
 
-    Distinguishes file, module, and project summarisation calls by inspecting
-    distinctive phrases present in the formatted prompt templates.
+    Records entries as:
+    - "file:<relative_path>" for file summarisation calls
+    - "module:<relative_path>" for module summarisation calls (root module = "root")
+    - "project" for project summarisation calls
+
+    Paths are relative to the working directory provided at construction.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, working_dir: Path) -> None:
         super().__init__()
         self.call_log: list[str] = []
+        self._working_dir = working_dir
 
     def on_chat_model_start(
         self,
@@ -125,11 +76,31 @@ class LLMCallLogger(BaseCallbackHandler):
     ) -> None:
         content = messages[0][0].content if messages and messages[0] else ""
         if "Summarize this Python module" in content:
-            self.call_log.append("module")
+            match = re.search(r"^Module:\s*(.+)$", content, re.MULTILINE)
+            if match:
+                path = Path(match.group(1).strip())
+                try:
+                    rel = path.relative_to(self._working_dir)
+                    name = str(rel) if str(rel) != "." else "root"
+                except ValueError:
+                    name = path.name
+            else:
+                name = "unknown"
+            self.call_log.append(f"module:{name}")
         elif "Create a project structure overview" in content:
             self.call_log.append("project")
         else:
-            self.call_log.append("file")
+            match = re.search(r"^File:\s*(.+)$", content, re.MULTILINE)
+            if match:
+                path = Path(match.group(1).strip())
+                try:
+                    rel = path.relative_to(self._working_dir)
+                    name = str(rel)
+                except ValueError:
+                    name = path.name
+            else:
+                name = "unknown"
+            self.call_log.append(f"file:{name}")
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +137,20 @@ def real_llm_working_dir(mock_project_template_root: Path) -> Path:
 
 
 def _make_mapper(working_dir: Path) -> tuple[ProjectMapper, LLMCallLogger]:
-    call_logger = LLMCallLogger()
+    call_logger = LLMCallLogger(working_dir)
     llm = get_ollama_model().with_config(callbacks=[call_logger])
     return ProjectMapper(working_dir, Summarizer(llm)), call_logger
 
 
 def _cache(working_dir: Path) -> CacheManager:
     return CacheManager(working_dir)
+
+
+def _assert_before(log: list[str], first: str, second: str) -> None:
+    """Assert that `first` appears before `second` in the call log."""
+    assert log.index(first) < log.index(second), (
+        f"Expected {first!r} before {second!r}, got log: {log}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -239,8 +217,85 @@ class TestRealLlmInitialMapping:
         # Hashes contain at least one known file
         assert any("constants.py" in path for path in hashes)
 
-        # Exact LLM call sequence matches bottom-up traversal order
-        assert call_logger.call_log == _EXPECTED_INITIAL_CALLS
+        # LLM call counts: 23 files, 11 modules, 1 project
+        log = call_logger.call_log
+        file_calls = [e for e in log if e.startswith("file:")]
+        module_calls = [e for e in log if e.startswith("module:")]
+        assert len(file_calls) == 23
+        assert len(module_calls) == 11
+        assert log[-1] == "project"
+
+        # Dependency ordering: each file must appear before its containing module,
+        # and each child module must appear before its parent module.
+        # Parallel calls within the same level may appear in any order.
+        _assert_before(log, "file:output/trading_strategy_implementation.py", "module:output")
+
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/crews/dummy_developer_crew/dummy_crew.py",
+            "module:src/crewai_trading_strategy/crews/dummy_developer_crew",
+        )
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/crews/trading_strategy_crew/trading_strategy_crew.py",
+            "module:src/crewai_trading_strategy/crews/trading_strategy_crew",
+        )
+        _assert_before(
+            log,
+            "module:src/crewai_trading_strategy/crews/dummy_developer_crew",
+            "module:src/crewai_trading_strategy/crews",
+        )
+        _assert_before(
+            log,
+            "module:src/crewai_trading_strategy/crews/trading_strategy_crew",
+            "module:src/crewai_trading_strategy/crews",
+        )
+
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/guardrails/backtester_guardrail.py",
+            "module:src/crewai_trading_strategy/guardrails",
+        )
+
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/tools/custom_tool.py",
+            "module:src/crewai_trading_strategy/tools",
+        )
+
+        _assert_before(
+            log,
+            "module:src/crewai_trading_strategy/crews",
+            "module:src/crewai_trading_strategy",
+        )
+        _assert_before(
+            log,
+            "module:src/crewai_trading_strategy/guardrails",
+            "module:src/crewai_trading_strategy",
+        )
+        _assert_before(
+            log,
+            "module:src/crewai_trading_strategy/tools",
+            "module:src/crewai_trading_strategy",
+        )
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/constants.py",
+            "module:src/crewai_trading_strategy",
+        )
+
+        _assert_before(log, "file:src/utils/code_utils.py", "module:src/utils")
+        _assert_before(log, "file:src/utils/strategy_backtester.py", "module:src/utils")
+
+        _assert_before(log, "module:src/crewai_trading_strategy", "module:src")
+        _assert_before(log, "module:src/utils", "module:src")
+
+        _assert_before(log, "file:tests/test_historical_prices.py", "module:tests")
+
+        _assert_before(log, "module:output", "module:root")
+        _assert_before(log, "module:src", "module:root")
+        _assert_before(log, "module:tests", "module:root")
+        _assert_before(log, "module:root", "project")
 
 
 @pytest.mark.real_llm
@@ -302,5 +357,23 @@ class TestRealLlmCompositeFileChanges:
         # Hashes contain the new file
         assert any("new_helper.py" in path for path in hashes2)
 
-        # Exact LLM call sequence matches incremental re-summarisation order
-        assert call_logger.call_log == _EXPECTED_SECOND_CALLS
+        # LLM call counts: 2 files, 4 modules, 1 project
+        log = call_logger.call_log
+        file_calls = [e for e in log if e.startswith("file:")]
+        module_calls = [e for e in log if e.startswith("module:")]
+        assert len(file_calls) == 2
+        assert len(module_calls) == 4
+        assert log[-1] == "project"
+
+        # Dependency ordering for incremental re-summarisation.
+        # Parallel calls (the two file calls) may appear in any order.
+        _assert_before(
+            log,
+            "file:src/crewai_trading_strategy/constants.py",
+            "module:src/crewai_trading_strategy",
+        )
+        _assert_before(log, "file:src/utils/new_helper.py", "module:src/utils")
+        _assert_before(log, "module:src/crewai_trading_strategy", "module:src")
+        _assert_before(log, "module:src/utils", "module:src")
+        _assert_before(log, "module:src", "module:root")
+        _assert_before(log, "module:root", "project")
