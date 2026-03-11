@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
@@ -79,7 +79,28 @@ class TestInitialMapping:
     def test_cache_files_created_with_expected_content(
         self, mock_project_working_copy: Path
     ) -> None:
-        _make_mapper(mock_project_working_copy).map_project()
+        # 23 .py files, 11 module directories (output, src, src/crewai_trading_strategy,
+        # src/crewai_trading_strategy/crews, src/crewai_trading_strategy/crews/dummy_developer_crew,
+        # src/crewai_trading_strategy/crews/trading_strategy_crew,
+        # src/crewai_trading_strategy/guardrails, src/crewai_trading_strategy/tools,
+        # src/utils, tests, root)
+        mapper = _make_mapper(mock_project_working_copy)
+        with (
+            patch.object(
+                mapper.summarizer,
+                "summarize_file",
+                wraps=mapper.summarizer.summarize_file,
+            ) as spy_file,
+            patch.object(
+                mapper.summarizer,
+                "summarize_module",
+                wraps=mapper.summarizer.summarize_module,
+            ) as spy_module,
+        ):
+            mapper.map_project()
+
+        assert spy_file.call_count == 23
+        assert spy_module.call_count == 11
 
         cache = _cache(mock_project_working_copy)
         context = cache.load_code_context()
@@ -163,7 +184,26 @@ class TestCompositeFileChanges:
         deleted_path.unlink()
 
         # --- Second mapping ---
-        _make_mapper(mock_project_working_copy).map_project()
+        # Change set: modify constants.py (1 file), add new_helper.py (1 file),
+        # delete code_utils.py (0 file summaries). Re-summarized modules:
+        # root, src, src/crewai_trading_strategy, src/utils = 4.
+        mapper2 = _make_mapper(mock_project_working_copy)
+        with (
+            patch.object(
+                mapper2.summarizer,
+                "summarize_file",
+                wraps=mapper2.summarizer.summarize_file,
+            ) as spy_file,
+            patch.object(
+                mapper2.summarizer,
+                "summarize_module",
+                wraps=mapper2.summarizer.summarize_module,
+            ) as spy_module,
+        ):
+            mapper2.map_project()
+
+        assert spy_file.call_count == 2
+        assert spy_module.call_count == 4
 
         cache2 = _cache(mock_project_working_copy)
         context2 = cache2.load_code_context()

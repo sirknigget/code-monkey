@@ -62,7 +62,9 @@ class TestNoChanges:
             patch(PATCH_CACHE) as mock_cache,
             patch(PATCH_STRUCTURE) as mock_structure,
         ):
-            mock_hashes.return_value.load.return_value = Hashes(modified_only={}, current={})
+            mock_hashes.return_value.load.return_value = Hashes(
+                modified_only={}, current={}
+            )
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
@@ -76,9 +78,14 @@ class TestNoChanges:
         assert saved_context.summary == "root-summary"
         assert saved_context.files["main.py"].summary == "main-file-summary"
         assert saved_context.submodules["pkg"].summary == "pkg-summary"
-        assert saved_context.submodules["pkg"].files["mod.py"].summary == "mod-file-summary"
+        assert (
+            saved_context.submodules["pkg"].files["mod.py"].summary
+            == "mod-file-summary"
+        )
 
-        mock_cache.return_value.save_project_context.assert_called_once_with("project-summary")
+        mock_cache.return_value.save_project_context.assert_called_once_with(
+            "project-summary"
+        )
         mock_cache.return_value.save_hashes.assert_called_once_with({})
 
 
@@ -128,10 +135,15 @@ class TestFirstRun:
 
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         assert saved_context.files["main.py"].summary == "summary-of-main.py"
-        assert saved_context.submodules["pkg"].files["mod.py"].summary == "summary-of-mod.py"
+        assert (
+            saved_context.submodules["pkg"].files["mod.py"].summary
+            == "summary-of-mod.py"
+        )
         assert saved_context.submodules["pkg"].summary == "module-summary"
 
-        mock_cache.return_value.save_project_context.assert_called_once_with("project-summary")
+        mock_cache.return_value.save_project_context.assert_called_once_with(
+            "project-summary"
+        )
         mock_cache.return_value.save_hashes.assert_called_once_with(current)
 
 
@@ -169,7 +181,10 @@ class TestModifiedFile:
         summarizer.summarize_project.return_value = "project-summary"
 
         modified_files: dict[str, str | None] = {"pkg/changed.py": "new-hash"}
-        current: dict[str, str] = {"pkg/changed.py": "new-hash", "pkg/stable.py": "stable-hash"}
+        current: dict[str, str] = {
+            "pkg/changed.py": "new-hash",
+            "pkg/stable.py": "stable-hash",
+        }
 
         with (
             patch(PATCH_HASHES) as mock_hashes,
@@ -194,6 +209,8 @@ class TestModifiedFile:
 
         # summarize_file called once (only changed.py); stable.py retained
         summarizer.summarize_file.assert_called_once()
+        # pkg and root are re-summarized (changed.py's parent + root)
+        assert summarizer.summarize_module.call_count == 2
         summarizer.summarize_project.assert_called_once()
 
 
@@ -254,6 +271,8 @@ class TestDeletedFile:
 
         # summarize_file must NOT be called for the kept file (its summary is cached)
         summarizer.summarize_file.assert_not_called()
+        # pkg and root are re-summarized (deleted file's parent + root)
+        assert summarizer.summarize_module.call_count == 2
         summarizer.summarize_project.assert_called_once()
 
 
@@ -308,6 +327,11 @@ class TestBottomUpOrder:
 
             ProjectMapper(tmp_path, summarizer).map_project()
 
+        # 2 files changed → 2 file summarizations
+        assert summarizer.summarize_file.call_count == 2
+        # sub + pkg + root → 3 module summarizations
+        assert summarizer.summarize_module.call_count == 3
+
         # deep.py file summary must appear before sub module summary
         assert call_log.index("file:deep.py") < call_log.index("module:sub")
         # sub module must be summarized before pkg module
@@ -336,14 +360,25 @@ class TestSaveOrder:
             patch(PATCH_CACHE) as mock_cache,
             patch(PATCH_STRUCTURE) as mock_structure,
         ):
-            mock_hashes.return_value.load.return_value = Hashes(modified_only={}, current={})
+            mock_hashes.return_value.load.return_value = Hashes(
+                modified_only={}, current={}
+            )
             mock_cache.return_value.load_code_context.return_value = None
             mock_structure.return_value.build.return_value = "project-structure"
 
-            mock_cache.return_value.save_code_context.side_effect = lambda _: save_order.append("code")
-            mock_cache.return_value.save_project_context.side_effect = lambda _: save_order.append("project")
-            mock_cache.return_value.save_hashes.side_effect = lambda _: save_order.append("hashes")
+            mock_cache.return_value.save_code_context.side_effect = lambda _: (
+                save_order.append("code")
+            )
+            mock_cache.return_value.save_project_context.side_effect = lambda _: (
+                save_order.append("project")
+            )
+            mock_cache.return_value.save_hashes.side_effect = lambda _: (
+                save_order.append("hashes")
+            )
 
             ProjectMapper(tmp_path, summarizer).map_project()
 
         assert save_order == ["code", "project", "hashes"]
+        # No files → no file summarizations; empty root still gets module-summarized
+        assert summarizer.summarize_file.call_count == 0
+        assert summarizer.summarize_module.call_count == 1
