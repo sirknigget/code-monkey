@@ -6,18 +6,21 @@ to isolated working directories for testing.
 
 import logging
 import shutil
-import tempfile
 from pathlib import Path
 
-import dotenv
 import pytest
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# Suppress low-level HTTP transport noise during tests
+for _noisy_logger in ("httpx", "httpcore", "urllib3", "openai._base_client", "langsmith"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
+
 # Path to the mock project root
 MOCK_PROJECT_ROOT = "mock_project"
 MOCK_PROJECT_NAME = "crewai_trading_strategy"
+
 
 @pytest.fixture(scope="session")
 def mock_project_template_root(pytestconfig) -> Path:

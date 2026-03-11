@@ -29,7 +29,7 @@ from langchain_core.messages import BaseMessage
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.models.models import get_ollama_model
+from code_monkey.models.models import GPT_4O_MINI, get_ollama_model, get_openai_model
 
 dotenv.load_dotenv()
 
@@ -138,7 +138,7 @@ def real_llm_working_dir(mock_project_template_root: Path) -> Path:
 
 def _make_mapper(working_dir: Path) -> tuple[ProjectMapper, LLMCallLogger]:
     call_logger = LLMCallLogger(working_dir)
-    llm = get_ollama_model().with_config(callbacks=[call_logger])
+    llm = get_openai_model(model = GPT_4O_MINI).with_config(callbacks=[call_logger])
     return ProjectMapper(working_dir, Summarizer(llm)), call_logger
 
 
