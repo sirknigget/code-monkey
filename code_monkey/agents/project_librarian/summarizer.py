@@ -1,5 +1,7 @@
 """LLM-based summarizer with LangChain retry."""
 
+import logging
+import time
 from pathlib import Path
 from typing import NamedTuple
 
@@ -15,6 +17,8 @@ from code_monkey.agents.project_librarian.summarizer_prompts import (
 )
 from code_monkey.agents.project_librarian.types import ModuleContext
 
+logger = logging.getLogger(__name__)
+
 
 class Summarizer:
     """LLM-based file, module, and project summarization.
@@ -28,18 +32,28 @@ class Summarizer:
     MAX_PROJECT_SUMMARY_LINES = 1000
     MAX_RETRIES = 3
 
-    def __init__(self, llm: BaseChatModel) -> None:
+    def __init__(self, llm: BaseChatModel, working_dir: Path | None = None) -> None:
         """Initialize summarizer with LLM.
 
         Args:
             llm: LangChain BaseChatModel instance.
+            working_dir: Project root used to display relative paths in logs.
         """
         # Attach retry behavior directly to the LLM runnable.
         self.llm = llm.with_retry(stop_after_attempt=self.MAX_RETRIES)
+        self._working_dir = working_dir
 
         self._file_chain = self._create_file_summary_chain()
         self._module_chain = self._create_module_summary_chain()
         self._project_chain = self._create_project_summary_chain()
+
+    def _rel(self, path: Path) -> Path:
+        if self._working_dir is not None:
+            try:
+                return path.relative_to(self._working_dir)
+            except ValueError:
+                pass
+        return path
 
     def _create_file_summary_chain(self) -> RunnableSequence:
         """Create LangChain chain for file summaries.
@@ -85,12 +99,17 @@ class Summarizer:
         Returns:
             File summary string.
         """
+        logger.debug("Summarizing file: %s", self._rel(filepath))
         input_vars = {
             "filepath": str(filepath),
             "code": code,
             "max_lines": self.MAX_FILE_SUMMARY_LINES,
         }
-        return self._file_chain.invoke(input_vars).strip()
+        start = time.perf_counter()
+        result = self._file_chain.invoke(input_vars).strip()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.debug("File summarized: %s (%.0f ms)", self._rel(filepath), elapsed_ms)
+        return result
 
     class FileInfo(NamedTuple):
         filepath: Path
@@ -118,6 +137,12 @@ class Summarizer:
         Returns:
             Module summary string.
         """
+        logger.debug(
+            "Summarizing module: %s (%d file(s), %d submodule(s))",
+            self._rel(directory),
+            len(file_infos),
+            len(submodule_infos),
+        )
         combined_file_summaries = "\n---\n".join(
             Summarizer._format_file_info(info) for info in file_infos
         )
@@ -131,7 +156,11 @@ class Summarizer:
             "parent_context": parent_context or "(none)",
             "max_lines": self.MAX_MODULE_SUMMARY_LINES,
         }
-        return self._module_chain.invoke(input_vars).strip()
+        start = time.perf_counter()
+        result = self._module_chain.invoke(input_vars).strip()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.debug("Module summarized: %s (%.0f ms)", self._rel(directory), elapsed_ms)
+        return result
 
     def _module_summaries_from_code_context(
         self,
@@ -177,6 +206,7 @@ class Summarizer:
         Returns:
             Root module summary string.
         """
+        logger.debug("Summarizing project: %s", project_name)
         # Collect all module summaries recursively
         summary_parts = self._module_summaries_from_code_context(code_context)
 
@@ -191,7 +221,11 @@ class Summarizer:
             "project_structure": project_structure,
             "max_lines": self.MAX_PROJECT_SUMMARY_LINES,
         }
-        return self._project_chain.invoke(input_vars).strip()
+        start = time.perf_counter()
+        result = self._project_chain.invoke(input_vars).strip()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.debug("Project summarized: %s (%.0f ms)", project_name, elapsed_ms)
+        return result
 
 
 __all__ = ["Summarizer"]

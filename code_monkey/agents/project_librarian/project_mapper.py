@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import logging
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
@@ -17,6 +18,8 @@ from code_monkey.agents.project_librarian.utils.project_structure import (
     ProjectStructure,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ProjectMapper:
     """Builds an incremental module context tree for a project.
@@ -28,6 +31,7 @@ class ProjectMapper:
     def __init__(self, working_dir: Path, summarizer: Summarizer) -> None:
         self.working_dir = working_dir
         self.summarizer = summarizer
+        self.summarizer._working_dir = working_dir
 
     def map_project(self) -> None:
         """Build (or incrementally update) the full project context and persist it.
@@ -40,6 +44,14 @@ class ProjectMapper:
         hashes = ProjectFileHashes(self.working_dir).load()
         cache = CacheManager(self.working_dir)
         cached_context = cache.load_code_context()
+
+        modified_count = len(hashes.modified_only)
+        logger.debug(
+            "ProjectMapper: %d file(s) changed in %s (cache=%s)",
+            modified_count,
+            self.working_dir,
+            "hit" if cached_context is not None else "miss",
+        )
 
         context = self._build_revised_context(hashes.modified_only, cached_context)
         asyncio.run(self._summarize_bottom_up(context, self.working_dir))
@@ -54,6 +66,7 @@ class ProjectMapper:
         cache.save_code_context(context)
         cache.save_project_context(project_summary)
         cache.save_hashes(hashes.current)
+        logger.debug("ProjectMapper: cache saved successfully")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -143,7 +156,9 @@ class ProjectMapper:
         ]
 
         file_infos = [
-            Summarizer.FileInfo(filepath=current_dir / filename, summary=file_ctx.summary)
+            Summarizer.FileInfo(
+                filepath=current_dir / filename, summary=file_ctx.summary
+            )
             for filename, file_ctx in module.files.items()
             if file_ctx.summary is not None
         ]
@@ -151,5 +166,9 @@ class ProjectMapper:
         # 3. Summarize module itself if invalidated
         if module.summary is None:
             module.summary = await loop.run_in_executor(
-                None, self.summarizer.summarize_module, current_dir, file_infos, submodule_infos
+                None,
+                self.summarizer.summarize_module,
+                current_dir,
+                file_infos,
+                submodule_infos,
             )
