@@ -18,3 +18,7 @@ class ChatbotState(TypedDict):
     # Incremented by agent_node at entry. Checked in the verifier routing
     # function to enforce the max_iterations ceiling.
     iteration_count: int
+
+    # When True, the graph routes through map_project_node before the
+    # orchestrator so the project context is refreshed first.
+    needs_mapping: bool

@@ -25,6 +25,9 @@ uv run pytest tests/agents/project_librarian/ -v
 uv run ruff check .
 uv run ruff format .
 
+# Type check
+uv run pyright
+
 # Add new dependencies
 uv add <package>
 ```
