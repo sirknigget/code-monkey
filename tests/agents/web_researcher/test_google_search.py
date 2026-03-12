@@ -2,7 +2,7 @@ import logging
 import pytest
 from dotenv import load_dotenv
 
-from src.agents.web_researcher.tools import google_search_tool, NUM_GOOGLE_RESULTS
+from code_monkey.agents.web_researcher.tools import google_search_tool, NUM_GOOGLE_RESULTS
 
 logger = logging.getLogger(__name__)
 

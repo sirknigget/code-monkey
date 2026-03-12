@@ -1,9 +1,10 @@
 import logging
+
 import pytest
 from dotenv import load_dotenv
 
-from src.agents.web_researcher.tools import PlaywrightTools
-from src.utils.json_utils import dump_object
+from code_monkey.agents.web_researcher.tools import PlaywrightTools
+from code_monkey.utils.json_utils import dump_object
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ async def test_playwright_tools_navigate():
     pt = await PlaywrightTools.initialize(headless=True)
 
     # Find navigate and click tools
-    navigate_tool = [tool for tool in pt.get_tools() if tool.name == "navigate_browser"]
+    navigate_tool = [tool for tool in pt.get_tools() if tool.name == "navigate_browser"][0]
     assert navigate_tool is not None, "navigate_browser tool not found"
 
     # Navigate to example.com using LangChain tool
