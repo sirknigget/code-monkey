@@ -9,7 +9,10 @@ load_dotenv(override=True)
 
 
 def main():
-    logger.info("Hello from code-monkey!")
+    from code_monkey.controller.controller import Controller
+    from code_monkey.ui.impl.cli import CliChatbotUI
+
+    Controller(CliChatbotUI()).run()
 
 
 if __name__ == "__main__":
