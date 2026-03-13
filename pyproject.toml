@@ -27,6 +27,7 @@ dependencies = [
     "prompt-toolkit>=3.0.52",
     "pexpect>=4.9.0",
     "pyte>=0.8.2",
+    "langgraph-checkpoint-sqlite>=3.0.3",
 ]
 [tool.ruff]
 exclude = ["mock_project", "tests/output"]

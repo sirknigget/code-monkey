@@ -1,4 +1,5 @@
 import pytest
+from langgraph.checkpoint.memory import MemorySaver
 
 from code_monkey.graph.agent_graph import AgentGraph
 from tests.graph.mock_nodes_provider import MockNodesProvider
@@ -6,19 +7,40 @@ from tests.graph.mock_nodes_provider import MockNodesProvider
 
 @pytest.fixture
 def agent():
-    return AgentGraph(MockNodesProvider())
+    return AgentGraph(MockNodesProvider(), checkpointer=MemorySaver())
 
 
-def test_routes_to_orchestrator_when_needs_mapping_false(agent):
-    result = agent.invoke("hi", needs_mapping=False)
-    contents = [m.content for m in result["messages"]]
-    assert contents == ["hi", "[mock] orchestrator decision"]
-
-
-def test_routes_to_map_project_then_orchestrator_when_needs_mapping_true(agent):
-    result = agent.invoke("hi", needs_mapping=True)
+def test_first_invocation_maps_project(agent):
+    result = agent.invoke("hi")
     contents = [m.content for m in result["messages"]]
     assert contents == ["hi", "[mock] project mapped", "[mock] orchestrator decision"]
+
+
+def test_subsequent_invocation_skips_mapping(agent):
+    agent.invoke("hi")
+    result = agent.invoke("hello")
+    contents = [m.content for m in result["messages"]]
+    assert contents == [
+        "hi",
+        "[mock] project mapped",
+        "[mock] orchestrator decision",
+        "hello",
+        "[mock] orchestrator decision",
+    ]
+
+
+def test_force_mapping_remaps_after_first_run(agent):
+    agent.invoke("hi")
+    result = agent.invoke("hello", force_mapping=True)
+    contents = [m.content for m in result["messages"]]
+    assert contents == [
+        "hi",
+        "[mock] project mapped",
+        "[mock] orchestrator decision",
+        "hello",
+        "[mock] project mapped",
+        "[mock] orchestrator decision",
+    ]
 
 
 def test_mermaid_diagram_contains_all_nodes(agent):
