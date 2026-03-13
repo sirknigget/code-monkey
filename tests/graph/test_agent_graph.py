@@ -43,6 +43,40 @@ def test_force_mapping_remaps_after_first_run(agent):
     ]
 
 
+@pytest.fixture
+def agent_with_tool_call():
+    return AgentGraph(
+        MockNodesProvider(emit_tool_call=True), checkpointer=MemorySaver()
+    )
+
+
+def test_tool_routing_routes_through_tools_node(agent_with_tool_call):
+    result = agent_with_tool_call.invoke("hi")
+    contents = [m.content for m in result["messages"]]
+    assert contents == [
+        "hi",
+        "[mock] project mapped",
+        "[mock] tool call",
+        "[mock] tool result",
+        "[mock] orchestrator decision",
+    ]
+
+
+def test_tool_routing_subsequent_invoke_skips_tool_call(agent_with_tool_call):
+    agent_with_tool_call.invoke("hi")
+    result = agent_with_tool_call.invoke("hello")
+    contents = [m.content for m in result["messages"]]
+    assert contents == [
+        "hi",
+        "[mock] project mapped",
+        "[mock] tool call",
+        "[mock] tool result",
+        "[mock] orchestrator decision",
+        "hello",
+        "[mock] orchestrator decision",
+    ]
+
+
 def test_mermaid_diagram_contains_all_nodes(agent):
     diagram = agent.get_mermaid_diagram()
     assert "map_project_node" in diagram
