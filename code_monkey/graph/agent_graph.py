@@ -3,9 +3,9 @@ from typing import cast
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import tools_condition
 
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
@@ -52,7 +52,12 @@ class AgentGraph:
             ),
         )
         graph.add_edge("map_project_node", "orchestrator_node")
-        graph.add_conditional_edges("orchestrator_node", tools_condition)
+        graph.add_conditional_edges(
+            "orchestrator_node",
+            lambda state: (
+                "tools" if cast(ChatbotState, state)["messages"][-1].tool_calls else END
+            ),
+        )
         graph.add_edge("tools", "orchestrator_node")
 
         return graph.compile(checkpointer=checkpointer)
