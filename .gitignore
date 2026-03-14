@@ -212,3 +212,4 @@ __marimo__/
 # Real LLM integration test output (left for manual inspection)
 tests/output/
 /.codemonkey/
+/test_sandbox/
