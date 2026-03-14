@@ -85,6 +85,11 @@ class AgentGraph:
         """Return True if a persisted checkpoint exists for this thread."""
         return self._checkpointer.get(self._thread_config) is not None
 
+    def clear(self) -> None:
+        """Delete the persisted checkpoint for this thread."""
+        thread_id = self._thread_config["configurable"]["thread_id"]
+        self._checkpointer.delete_thread(thread_id)
+
     def get_mermaid_diagram(self) -> str:
         return self._graph.get_graph().draw_mermaid()
 
