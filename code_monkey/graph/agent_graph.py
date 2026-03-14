@@ -10,8 +10,13 @@ from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from code_monkey.graph.nodes_provider import NodesProvider
+from code_monkey.agents.web_researcher.web_researcher import WebResearcher
+from code_monkey.graph.nodes_provider import DefaultNodesProvider, NodesProvider
 from code_monkey.graph.state import ChatbotState
+from code_monkey.graph.tools.bash_tool import bash_tool
+from code_monkey.graph.tools.file_tools import create_file_tools
+from code_monkey.graph.tools.web_researcher_tool import create_web_researcher_tool
+from code_monkey.models.models import get_openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,27 @@ class AgentGraph:
         self._checkpointer = checkpointer
         self._thread_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         self._graph = self._build(nodes_provider, checkpointer)
+
+    @classmethod
+    async def create(
+        cls,
+        checkpointer: BaseCheckpointSaver,
+        project_root: str,
+        thread_id: str = "session",
+    ) -> "AgentGraph":
+        """Async factory: creates WebResearcher, wires all tools, returns AgentGraph."""
+        researcher = await cls._create_web_researcher()
+        tools = [
+            create_web_researcher_tool(researcher),
+            *create_file_tools(root_dir=project_root),
+            bash_tool,
+        ]
+        return cls(DefaultNodesProvider(tools), checkpointer, thread_id)
+
+    @staticmethod
+    async def _create_web_researcher() -> WebResearcher:
+        """Instantiate a WebResearcher. Extracted as a static method so tests can mock it."""
+        return await WebResearcher.create(model=get_openai_model())
 
     def invoke(self, message: str, force_mapping: bool = False) -> dict:
         return self._graph.invoke(

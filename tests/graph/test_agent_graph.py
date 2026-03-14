@@ -1,8 +1,61 @@
 import pytest
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import tool as lc_tool
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
 
 from code_monkey.graph.agent_graph import AgentGraph
+from code_monkey.graph.nodes_provider import NodesProvider
+from code_monkey.graph.state import ChatbotState
 from tests.graph.mock_nodes_provider import MockNodesProvider
+
+
+# ---------------------------------------------------------------------------
+# Tool-call integration helpers
+# ---------------------------------------------------------------------------
+
+
+@lc_tool
+def _mock_search(query: str) -> str:
+    """Search for information."""
+    return f"results for: {query}"
+
+
+class _RealToolNodeProvider(NodesProvider):
+    """Mock orchestrator + real ToolNode with _mock_search. Used to test tool execution."""
+
+    def __init__(self) -> None:
+        self._tool_node = ToolNode([_mock_search])
+        self._tool_call_emitted = False
+
+    def map_project_node(self, state: ChatbotState) -> dict:
+        return {
+            "messages": [AIMessage(content="[mock] project mapped")],
+            "needs_mapping": False,
+        }
+
+    def orchestrator_node(self, state: ChatbotState) -> dict:
+        if not self._tool_call_emitted:
+            self._tool_call_emitted = True
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "_mock_search",
+                                "args": {"query": "test query"},
+                                "id": "call_test_1",
+                                "type": "tool_call",
+                            }
+                        ],
+                    )
+                ]
+            }
+        return {"messages": [AIMessage(content="final answer")]}
+
+    def tool_node(self, state: ChatbotState) -> dict:
+        return self._tool_node.invoke(state)
 
 
 @pytest.fixture
@@ -48,18 +101,6 @@ def agent_with_tool_call():
     return AgentGraph(
         MockNodesProvider(emit_tool_call=True), checkpointer=MemorySaver()
     )
-
-
-def test_tool_routing_routes_through_tools_node(agent_with_tool_call):
-    result = agent_with_tool_call.invoke("hi")
-    contents = [m.content for m in result["messages"]]
-    assert contents == [
-        "hi",
-        "[mock] project mapped",
-        "[mock] tool call",
-        "[mock] tool result",
-        "[mock] orchestrator decision",
-    ]
 
 
 def test_tool_routing_subsequent_invoke_skips_tool_call(agent_with_tool_call):
@@ -151,3 +192,38 @@ def test_get_history_omits_tool_call_messages(agent_with_tool_call):
         ("assistant", "[mock] tool result"),
         ("assistant", "[mock] orchestrator decision"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Real ToolNode execution with mock tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def agent_with_real_tool_node():
+    return AgentGraph(_RealToolNodeProvider(), checkpointer=MemorySaver())
+
+
+def test_tool_node_executes_mock_tool_and_returns_result(agent_with_real_tool_node):
+    result = agent_with_real_tool_node.invoke("search for something")
+
+    tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].content == "results for: test query"
+
+
+def test_tool_node_result_feeds_back_to_orchestrator(agent_with_real_tool_node):
+    result = agent_with_real_tool_node.invoke("search for something")
+
+    contents = [m.content for m in result["messages"] if m.content]
+    assert contents[-1] == "final answer"
+
+
+def test_tool_node_tool_call_id_matches_tool_message(agent_with_real_tool_node):
+    result = agent_with_real_tool_node.invoke("search for something")
+
+    ai_msg = next(
+        m for m in result["messages"] if isinstance(m, AIMessage) and m.tool_calls
+    )
+    tool_msg = next(m for m in result["messages"] if isinstance(m, ToolMessage))
+    assert tool_msg.tool_call_id == ai_msg.tool_calls[0]["id"]
