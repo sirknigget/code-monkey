@@ -59,6 +59,10 @@ class ChatbotUI(Protocol):
         """
         ...
 
+    def user_message(self, content: str) -> None:
+        """Render a message produced by the user (e.g. during history replay)."""
+        ...
+
     def assistant_message(self, content: str) -> None:
         """Render a message produced by the AI assistant."""
         ...

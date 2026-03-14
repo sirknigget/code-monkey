@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from typing import Any, cast
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
@@ -16,6 +16,11 @@ from code_monkey.graph.state import ChatbotState
 logger = logging.getLogger(__name__)
 
 DEBUG = False
+
+
+def _is_text_ai_message(msg: BaseMessage) -> bool:
+    """Return True for AIMessages that carry visible text (no tool calls)."""
+    return isinstance(msg, AIMessage) and bool(msg.content) and not msg.tool_calls
 
 
 class _DebugCallbackHandler(BaseCallbackHandler):
@@ -58,8 +63,23 @@ class AgentGraph:
         ):
             for _node, node_update in update.items():
                 for msg in node_update.get("messages", []):
-                    if isinstance(msg, AIMessage) and msg.content:
+                    if _is_text_ai_message(msg):
                         yield msg.content
+
+    def get_history(self) -> Iterator[tuple[str, str]]:
+        """Yield (role, content) pairs from the persisted checkpoint.
+
+        role is "user" for HumanMessages and "assistant" for text AIMessages.
+        Tool-call AIMessages are omitted.
+        """
+        checkpoint = self._checkpointer.get(self._thread_config)
+        if checkpoint is None:
+            return
+        for msg in checkpoint.get("channel_values", {}).get("messages", []):
+            if isinstance(msg, HumanMessage) and msg.content:
+                yield "user", msg.content
+            elif _is_text_ai_message(msg):
+                yield "assistant", msg.content
 
     def has_checkpoint(self) -> bool:
         """Return True if a persisted checkpoint exists for this thread."""
@@ -80,7 +100,7 @@ class AgentGraph:
     def _run_config(self) -> RunnableConfig:
         return {
             **self._thread_config,
-            **({"callbacks": [_DebugCallbackHandler()]} if DEBUG else {}),
+            **({("callbacks"): [_DebugCallbackHandler()]} if DEBUG else {}),
         }
 
     @staticmethod

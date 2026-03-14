@@ -101,11 +101,53 @@ def test_stream_force_mapping_yields_map_then_orchestrator(agent):
     assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
 
 
-def test_stream_tool_routing_yields_all_messages(agent_with_tool_call):
+def test_stream_tool_routing_skips_tool_call_messages(agent_with_tool_call):
     contents = list(agent_with_tool_call.stream("hi"))
     assert contents == [
         "[mock] project mapped",
-        "[mock] tool call",
         "[mock] tool result",
         "[mock] orchestrator decision",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# get_history
+# ---------------------------------------------------------------------------
+
+
+def test_get_history_empty_when_no_checkpoint(agent):
+    assert list(agent.get_history()) == []
+
+
+def test_get_history_returns_interleaved_user_and_assistant_messages(agent):
+    agent.invoke("hi")
+    history = list(agent.get_history())
+    assert history == [
+        ("user", "hi"),
+        ("assistant", "[mock] project mapped"),
+        ("assistant", "[mock] orchestrator decision"),
+    ]
+
+
+def test_get_history_accumulates_across_turns(agent):
+    agent.invoke("hi")
+    agent.invoke("hello")
+    history = list(agent.get_history())
+    assert history == [
+        ("user", "hi"),
+        ("assistant", "[mock] project mapped"),
+        ("assistant", "[mock] orchestrator decision"),
+        ("user", "hello"),
+        ("assistant", "[mock] orchestrator decision"),
+    ]
+
+
+def test_get_history_omits_tool_call_messages(agent_with_tool_call):
+    agent_with_tool_call.invoke("hi")
+    history = list(agent_with_tool_call.get_history())
+    assert history == [
+        ("user", "hi"),
+        ("assistant", "[mock] project mapped"),
+        ("assistant", "[mock] tool result"),
+        ("assistant", "[mock] orchestrator decision"),
     ]

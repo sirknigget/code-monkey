@@ -12,6 +12,7 @@ from code_monkey.ui.protocol import Command, InputEvent
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _CYAN = "\033[36m"
+_GREEN = "\033[32m"
 _YELLOW = "\033[33m"
 _RED = "\033[31m"
 
@@ -65,6 +66,10 @@ class SimpleCliChatbotUI:
             return InputEvent(text=text, command=command)
 
         return InputEvent(text=text, command=Command.USER_INPUT)
+
+    def user_message(self, content: str) -> None:
+        self._stdout.write(f"{_BOLD}{_GREEN}You: {_RESET}{content}\n")
+        self._stdout.flush()
 
     def assistant_message(self, content: str) -> None:
         self._stdout.write(f"{_BOLD}{_CYAN}Assistant: {_RESET}{content}\n")

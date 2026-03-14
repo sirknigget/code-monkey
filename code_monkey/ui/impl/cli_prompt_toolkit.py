@@ -81,6 +81,12 @@ class PromptToolkitChatbotUI:
 
         return InputEvent(text=text, command=Command.USER_INPUT)
 
+    def user_message(self, content: str) -> None:
+        print_formatted_text(
+            FormattedText([("bold ansigreen", "You: "), ("", content)]),
+            file=self._stdout,
+        )
+
     def assistant_message(self, content: str) -> None:
         print_formatted_text(
             FormattedText([("bold ansicyan", "Assistant: "), ("", content)]),

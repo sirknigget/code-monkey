@@ -34,7 +34,15 @@ class Controller:
             thread_id=_THREAD_ID,
         )
         if self._graph.has_checkpoint():
-            self._ui.system_message("Resuming previous session.")
+            self._replay_history()
+
+    def _replay_history(self) -> None:
+        for role, content in self._graph.get_history():
+            if role == "user":
+                self._ui.user_message(content)
+            else:
+                self._ui.assistant_message(content)
+        self._ui.system_message("Resuming previous session.")
 
     def run(self) -> None:
         """Run the CLI loop until the user signals exit."""

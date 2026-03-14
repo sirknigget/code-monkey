@@ -12,6 +12,7 @@ from code_monkey.ui.impl.cli_simple import (
     SimpleCliChatbotUI,
     _BOLD,
     _CYAN,
+    _GREEN,
     _RED,
     _RESET,
     _YELLOW,
@@ -92,6 +93,12 @@ def test_ctrl_c_raises_system_exit():
 # ---------------------------------------------------------------------------
 # Output methods
 # ---------------------------------------------------------------------------
+
+
+def test_user_message_writes_to_stdout():
+    out = io.StringIO()
+    _make_ui(stdout=out).user_message("Hello!")
+    assert out.getvalue() == f"{_BOLD}{_GREEN}You: {_RESET}Hello!\n"
 
 
 def test_assistant_message_writes_to_stdout():
