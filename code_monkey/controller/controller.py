@@ -16,6 +16,7 @@ _THREAD_ID = "session"
 
 
 def _make_checkpointer() -> SqliteSaver:
+    os.makedirs(os.path.dirname(_DEFAULT_DB_PATH), exist_ok=True)
     db_path = os.environ.get("CODEMONKEY_DB_PATH", _DEFAULT_DB_PATH)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     checkpointer = SqliteSaver(conn)
@@ -51,6 +52,5 @@ class Controller:
             if not event.text.strip():
                 continue
 
-            result = self._graph.invoke(event.text)
-            last_message = result["messages"][-1]
-            self._ui.assistant_message(last_message.content)
+            for content in self._graph.stream(event.text):
+                self._ui.assistant_message(content)

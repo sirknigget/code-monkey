@@ -1,6 +1,9 @@
-from typing import cast
+import logging
+from collections.abc import Iterator
+from typing import Any, cast
 
-from langchain_core.messages import HumanMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
@@ -9,6 +12,24 @@ from langgraph.graph.state import CompiledStateGraph
 
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
+
+logger = logging.getLogger(__name__)
+
+DEBUG = False
+
+
+class _DebugCallbackHandler(BaseCallbackHandler):
+    def on_chain_start(
+        self, serialized: dict[str, Any] | None, inputs: dict[str, Any], **kwargs: Any
+    ) -> None:
+        name = (serialized or {}).get("name") or kwargs.get("name", "unknown")
+        logger.debug("node start: %s | inputs: %s", name, inputs)
+
+    def on_chain_end(self, outputs: dict[str, Any], **kwargs: Any) -> None:
+        logger.debug("node end | outputs: %s", outputs)
+
+    def on_chain_error(self, error: BaseException, **kwargs: Any) -> None:
+        logger.debug("node error: %s", error)
 
 
 class AgentGraph:
@@ -23,14 +44,22 @@ class AgentGraph:
         self._graph = self._build(nodes_provider, checkpointer)
 
     def invoke(self, message: str, force_mapping: bool = False) -> dict:
-        is_new_session = self._checkpointer.get(self._thread_config) is None
-        state: ChatbotState = {
-            "messages": [HumanMessage(content=message)],
-            "needs_mapping": force_mapping or is_new_session,
-            "review_feedback": None,
-            "iteration_count": 0,
-        }
-        return self._graph.invoke(state, config=self._thread_config)
+        return self._graph.invoke(
+            self._initial_state(message, force_mapping),
+            config=self._run_config(),
+        )
+
+    def stream(self, message: str, force_mapping: bool = False) -> Iterator[str]:
+        """Yield text content of each AI message as the graph runs node by node."""
+        for update in self._graph.stream(
+            self._initial_state(message, force_mapping),
+            config=self._run_config(),
+            stream_mode="updates",
+        ):
+            for _node, node_update in update.items():
+                for msg in node_update.get("messages", []):
+                    if isinstance(msg, AIMessage) and msg.content:
+                        yield msg.content
 
     def has_checkpoint(self) -> bool:
         """Return True if a persisted checkpoint exists for this thread."""
@@ -38,6 +67,21 @@ class AgentGraph:
 
     def get_mermaid_diagram(self) -> str:
         return self._graph.get_graph().draw_mermaid()
+
+    def _initial_state(self, message: str, force_mapping: bool) -> ChatbotState:
+        is_new_session = self._checkpointer.get(self._thread_config) is None
+        return {
+            "messages": [HumanMessage(content=message)],
+            "needs_mapping": force_mapping or is_new_session,
+            "review_feedback": None,
+            "iteration_count": 0,
+        }
+
+    def _run_config(self) -> RunnableConfig:
+        return {
+            **self._thread_config,
+            **({"callbacks": [_DebugCallbackHandler()]} if DEBUG else {}),
+        }
 
     @staticmethod
     def _build(

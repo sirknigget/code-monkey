@@ -82,3 +82,30 @@ def test_mermaid_diagram_contains_all_nodes(agent):
     assert "map_project_node" in diagram
     assert "orchestrator_node" in diagram
     assert "tools" in diagram
+
+
+def test_stream_first_invocation_yields_map_then_orchestrator(agent):
+    contents = list(agent.stream("hi"))
+    assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
+
+
+def test_stream_subsequent_invocation_yields_orchestrator_only(agent):
+    list(agent.stream("hi"))
+    contents = list(agent.stream("hello"))
+    assert contents == ["[mock] orchestrator decision"]
+
+
+def test_stream_force_mapping_yields_map_then_orchestrator(agent):
+    list(agent.stream("hi"))
+    contents = list(agent.stream("hello", force_mapping=True))
+    assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
+
+
+def test_stream_tool_routing_yields_all_messages(agent_with_tool_call):
+    contents = list(agent_with_tool_call.stream("hi"))
+    assert contents == [
+        "[mock] project mapped",
+        "[mock] tool call",
+        "[mock] tool result",
+        "[mock] orchestrator decision",
+    ]

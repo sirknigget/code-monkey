@@ -51,9 +51,11 @@ def test_user_input_produces_assistant_response(child):
 def test_assistant_message_contains_orchestrator_content(child):
     child.expect("You:")
     child.sendline("hello")
-    # "Assistant: " appears literally in the stream from print_formatted_text.
+    # First invocation triggers map_project_node, then orchestrator_node.
+    # Both emit assistant messages; wait past the first to assert the second.
     child.expect("Assistant: ")
-    # Content follows on the same line up to the newline.
+    child.expect("\r\n")  # skip map_project_node message
+    child.expect("Assistant: ")
     child.expect("\r\n")
     content = _strip_ansi(child.before).rstrip("\r")
     assert content == "[orchestrator_node] ready"
@@ -86,6 +88,9 @@ def test_clear_then_message_still_produces_response(child):
     child.expect("Session cleared.")
     child.expect("You:")
     child.sendline("hello")
+    # After /clear the session is fresh, so map_project_node runs first.
+    child.expect("Assistant: ")
+    child.expect("\r\n")  # skip map_project_node message
     child.expect("Assistant: ")
     child.expect("\r\n")
     content = _strip_ansi(child.before).rstrip("\r")
