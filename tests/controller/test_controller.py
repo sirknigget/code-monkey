@@ -7,26 +7,22 @@ from pathlib import Path
 import pexpect
 import pytest
 
-_PROJECT_ROOT = str(
-    next(p for p in Path(__file__).parents if (p / "pyproject.toml").exists())
-)
-
 
 def _strip_ansi(text: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*[mGKHFl?]", "", text)
 
 
-def _spawn(tmp_path: Path) -> pexpect.spawn:
+def _spawn(tmp_path: Path, project_root: Path) -> pexpect.spawn:
     """Spawn the main entry point with an isolated checkpoint DB."""
     env = {
         "CODEMONKEY_DB_PATH": str(tmp_path / "checkpoints.db"),
         "PATH": "/usr/local/bin:/usr/bin:/bin",
         "HOME": str(Path.home()),
-        "PYTHONPATH": _PROJECT_ROOT,
+        "PYTHONPATH": str(project_root),
     }
     child = pexpect.spawn(
         f"{sys.executable} -m code_monkey.main",
-        cwd=_PROJECT_ROOT,
+        cwd=str(project_root),
         env=env,
         encoding="utf-8",
         timeout=15,
@@ -35,8 +31,8 @@ def _spawn(tmp_path: Path) -> pexpect.spawn:
 
 
 @pytest.fixture
-def child(tmp_path):
-    proc = _spawn(tmp_path)
+def child(tmp_path, pytestconfig):
+    proc = _spawn(tmp_path, pytestconfig.rootpath)
     yield proc
     if proc.isalive():
         proc.close(force=True)
@@ -96,9 +92,9 @@ def test_clear_then_message_still_produces_response(child):
     assert content == "[orchestrator_node] ready"
 
 
-def test_session_persists_across_restart(tmp_path):
+def test_session_persists_across_restart(tmp_path, pytestconfig):
     # First process: send a message so a checkpoint is created.
-    proc1 = _spawn(tmp_path)
+    proc1 = _spawn(tmp_path, pytestconfig.rootpath)
     proc1.expect("You:")
     proc1.sendline("hello")
     proc1.expect("Assistant: ")
@@ -106,15 +102,15 @@ def test_session_persists_across_restart(tmp_path):
     proc1.expect(pexpect.EOF)
 
     # Second process: checkpoint exists → "Resuming previous session." before prompt.
-    proc2 = _spawn(tmp_path)
+    proc2 = _spawn(tmp_path, pytestconfig.rootpath)
     proc2.expect("Resuming previous session.")
     proc2.expect("You:")
     proc2.close(force=True)
 
 
-def test_clear_then_restart_starts_fresh(tmp_path):
+def test_clear_then_restart_starts_fresh(tmp_path, pytestconfig):
     # First process: send a message then clear.
-    proc1 = _spawn(tmp_path)
+    proc1 = _spawn(tmp_path, pytestconfig.rootpath)
     proc1.expect("You:")
     proc1.sendline("hello")
     proc1.expect("Assistant: ")
@@ -125,7 +121,7 @@ def test_clear_then_restart_starts_fresh(tmp_path):
     proc1.expect(pexpect.EOF)
 
     # Second process: checkpoint was deleted → no "Resuming" message, prompt appears directly.
-    proc2 = _spawn(tmp_path)
+    proc2 = _spawn(tmp_path, pytestconfig.rootpath)
     proc2.expect("You:")
     output = _strip_ansi(proc2.before)
     assert "Resuming" not in output
