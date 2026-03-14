@@ -11,12 +11,12 @@ import pytest
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from code_monkey.ui.impl.cli import CliChatbotUI
+from code_monkey.ui.impl.cli_prompt_toolkit import PromptToolkitChatbotUI
 from code_monkey.ui.protocol import Command, InputEvent
 
 
-def _make_ui(inp, stdout=None, stderr=None) -> CliChatbotUI:
-    return CliChatbotUI(
+def _make_ui(inp, stdout=None, stderr=None) -> PromptToolkitChatbotUI:
+    return PromptToolkitChatbotUI(
         input=inp,
         output=DummyOutput(),
         stdout=stdout,

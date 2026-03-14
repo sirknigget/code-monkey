@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from code_monkey.utils.log_utils import suppress_noisy_loggers
+
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Suppress low-level HTTP transport noise during tests
-for _noisy_logger in ("httpx", "httpcore", "urllib3", "openai._base_client", "langsmith"):
-    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
+suppress_noisy_loggers()
 
 # Path to the mock project root
 MOCK_PROJECT_ROOT = "mock_project"

@@ -8,9 +8,9 @@ from typing import Optional
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.input import Input
 from prompt_toolkit.output import Output
-from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.shortcuts import print_formatted_text
 
 from code_monkey.ui.protocol import Command, InputEvent
@@ -34,7 +34,7 @@ class _SlashCompleter(Completer):
                 yield Completion(f"/{name}", start_position=-len(text))
 
 
-class CliChatbotUI:
+class PromptToolkitChatbotUI:
     """Terminal chat UI backed by prompt_toolkit.
 
     Args:
