@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.checkpointer import DEFAULT_THREAD_ID, make_checkpointer
+from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
 from code_monkey.utils.log_utils import suppress_noisy_loggers
 
@@ -21,6 +22,7 @@ async def _main() -> None:
     graph = await AgentGraph.create(
         checkpointer=make_checkpointer(),
         project_root=os.getcwd(),
+        model_config=ModelConfig(),
         thread_id=DEFAULT_THREAD_ID,
     )
     Controller(SimpleCliChatbotUI(), graph).run()

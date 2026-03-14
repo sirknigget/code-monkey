@@ -10,13 +10,9 @@ from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from code_monkey.agents.web_researcher.web_researcher import WebResearcher
 from code_monkey.graph.nodes_provider import DefaultNodesProvider, NodesProvider
 from code_monkey.graph.state import ChatbotState
-from code_monkey.graph.tools.bash_tool import bash_tool
-from code_monkey.graph.tools.file_tools import create_file_tools
-from code_monkey.graph.tools.web_researcher_tool import create_web_researcher_tool
-from code_monkey.models.models import get_openai_model
+from code_monkey.models.model_config import ModelConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,21 +54,12 @@ class AgentGraph:
         cls,
         checkpointer: BaseCheckpointSaver,
         project_root: str,
+        model_config: ModelConfig,
         thread_id: str = "session",
     ) -> "AgentGraph":
-        """Async factory: creates WebResearcher, wires all tools, returns AgentGraph."""
-        researcher = await cls._create_web_researcher()
-        tools = [
-            create_web_researcher_tool(researcher),
-            *create_file_tools(root_dir=project_root),
-            bash_tool,
-        ]
-        return cls(DefaultNodesProvider(tools), checkpointer, thread_id)
-
-    @staticmethod
-    async def _create_web_researcher() -> WebResearcher:
-        """Instantiate a WebResearcher. Extracted as a static method so tests can mock it."""
-        return await WebResearcher.create(model=get_openai_model())
+        """Async factory: creates all nodes and tools, returns AgentGraph."""
+        nodes_provider = await DefaultNodesProvider.create(project_root, model_config)
+        return cls(nodes_provider, checkpointer, thread_id)
 
     def invoke(self, message: str, force_mapping: bool = False) -> dict:
         return self._graph.invoke(

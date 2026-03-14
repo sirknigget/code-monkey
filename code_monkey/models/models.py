@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 
 GPT_4O = "gpt-4o"
 GPT_4O_MINI = "gpt-4o-mini"
@@ -20,7 +20,7 @@ def _default_ollama_base_url() -> str:
 _OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL") or _default_ollama_base_url()
 
 
-def get_openai_model(model: str = GPT_4O) -> ChatOpenAI:
+def get_openai_model(model: str = GPT_4O_MINI) -> ChatOpenAI:
     """Return a predefined OpenAI model."""
     return ChatOpenAI(model=model)
 
