@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-code-monkey is a coding assistant with project context awareness. It has two specialized agents: a web researcher (LangGraph/LangChain-based) and a project librarian (direct orchestrator pattern, no graph). The web researcher uses LangGraph's `InMemorySaver` checkpointer for stateful execution; the project librarian does not use LangGraph.
+code-monkey is a CLI coding assistant with project context awareness. It runs a LangGraph-based chat loop backed by two specialized agents: a **Project Librarian** that incrementally maps the user's codebase and a **Web Researcher** for live web lookups. Conversation state persists in SQLite via `SqliteSaver`.
 
 ## Development Commands
 
@@ -32,9 +32,39 @@ uv run pyright
 uv add <package>
 ```
 
+## Running the CLI
+
+```bash
+uv run python -m code_monkey.main
+```
+
+Conversation state persists across runs via SQLite at `.codemonkey/checkpoints.db`. Type `/clear` in the CLI to reset the session.
+
 ## Architecture
 
-Two active agents under `code_monkey/agents/`:
+The application has four layers: **UI → Controller → Graph → Agents/Tools**.
+
+### Top-level graph (`code_monkey/graph/`)
+
+`AgentGraph` wraps a LangGraph `StateGraph` with three nodes:
+
+- `map_project_node` — runs the Project Librarian to refresh project context (only on first turn or when `needs_mapping=True`)
+- `orchestrator_node` — main LLM turn; calls tools if needed
+- `tool_node` — executes tool calls from the orchestrator
+
+Flow: `START → (map_project_node →) orchestrator_node ↔ tool_node → END`
+
+`ChatbotState` (in `graph/state.py`) carries `messages` (append-only), `needs_mapping`, `review_feedback`, and `iteration_count`.
+
+`NodesProvider` is an ABC that decouples node implementations from the graph — `DefaultNodesProvider` wires the real nodes; `tests/graph/mock_nodes_provider.py` provides a test double.
+
+### Controller (`code_monkey/controller/`)
+
+`Controller` owns the CLI run loop. It wires a `ChatbotUI` to `AgentGraph`, manages the `SqliteSaver` checkpointer, and handles the `Command.CLEAR` command (deletes the SQLite thread).
+
+### UI (`code_monkey/ui/`)
+
+`ChatbotUI` is a `Protocol` — the controller depends only on this interface. Two implementations: `SimpleCliChatbotUI` (plain print/input) and `cli_prompt_toolkit.py` (richer TUI). The UI knows nothing about graphs or message roles.
 
 ### Web Researcher (`agents/web_researcher/`)
 
