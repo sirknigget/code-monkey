@@ -19,14 +19,22 @@ load_dotenv(override=True)
 
 
 async def _main() -> None:
+    ui = SimpleCliChatbotUI()
+
+    result = make_checkpointer()
+    for error in result.errors:
+        ui.show_error(error)
+    if result.checkpointer is None:
+        return
+
     graph = await AgentGraph.create(
-        checkpointer=make_checkpointer(),
+        checkpointer=result.checkpointer,
         project_root=os.getcwd(),
         model_config=ModelConfig(),
         thread_id=DEFAULT_THREAD_ID,
     )
     try:
-        Controller(SimpleCliChatbotUI(), graph).run()
+        Controller(ui, graph).run()
     finally:
         await graph.teardown()
 
