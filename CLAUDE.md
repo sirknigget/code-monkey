@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-code-monkey is a CLI coding assistant with project context awareness. It runs a LangGraph-based chat loop backed by two specialized agents: a **Project Librarian** that incrementally maps the user's codebase and a **Web Researcher** for live web lookups. Conversation state persists in SQLite via `SqliteSaver`.
+code-monkey is a CLI coding assistant with project context awareness. It runs a LangGraph-based chat loop backed by two specialized agents: a **Project Librarian** that incrementally maps the user's codebase and a **Web Researcher** for live web lookups. Conversation state persists in SQLite via `AsyncSqliteSaver`.
 
 ## Development Commands
 
@@ -60,7 +60,7 @@ Flow: `START → (map_project_node →) orchestrator_node ↔ tool_node → END`
 
 ### Controller (`code_monkey/controller/`)
 
-`Controller` owns the CLI run loop. It wires a `ChatbotUI` to `AgentGraph`, manages the `SqliteSaver` checkpointer, and handles the `Command.CLEAR` command (deletes the SQLite thread).
+`Controller` owns the CLI run loop. It wires a `ChatbotUI` to `AgentGraph`, manages the `AsyncSqliteSaver` checkpointer, and handles the `Command.CLEAR` command (deletes the SQLite thread).
 
 ### UI (`code_monkey/ui/`)
 
@@ -117,3 +117,9 @@ Tests mirror source structure under `tests/`. Key fixtures in `tests/conftest.py
 - `mock_project_working_copy` (function-scoped) — isolated copy of the template for each test
 
 Integration tests (`test_project_mapper_integration.py`) use real filesystem and real utilities but mock the LLM at the boundary. The mock LLM returns deterministic strings encoding the summarized names so tests can assert on exact outputs.
+
+**Do not run `tests/agents/project_librarian/test_project_mapper_real_llm.py` as part of the test suite.** It makes real LLM API calls and is slow and expensive. Only run it manually when explicitly testing the real LLM mapper path:
+
+```bash
+uv run pytest tests/agents/project_librarian/test_project_mapper_real_llm.py -v
+```
