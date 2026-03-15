@@ -80,5 +80,5 @@ class SimpleCliChatbotUI:
         self._stdout.flush()
 
     def show_error(self, text: str) -> None:
-        self._stderr.write(f"{_BOLD}{_RED}Error: {_RESET}{text}\n")
-        self._stderr.flush()
+        self._stdout.write(f"{_BOLD}{_RED}Error: {_RESET}{text}\n")
+        self._stdout.flush()

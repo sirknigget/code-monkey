@@ -113,7 +113,7 @@ def test_system_message_writes_to_stdout():
     assert out.getvalue() == f"{_YELLOW}[System] {_RESET}Starting up...\n"
 
 
-def test_show_error_writes_to_stderr():
-    err = io.StringIO()
-    _make_ui(stderr=err).show_error("Something went wrong")
-    assert err.getvalue() == f"{_BOLD}{_RED}Error: {_RESET}Something went wrong\n"
+def test_show_error_writes_to_stdout():
+    out = io.StringIO()
+    _make_ui(stdout=out).show_error("Something went wrong")
+    assert out.getvalue() == f"{_BOLD}{_RED}Error: {_RESET}Something went wrong\n"
