@@ -1,7 +1,12 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from code_monkey.agents.web_researcher.web_researcher import WebResearcher
+
+_executor = ThreadPoolExecutor(max_workers=4)
 
 
 class WebSearchInput(BaseModel):
@@ -18,7 +23,11 @@ def create_web_researcher_tool(researcher: WebResearcher) -> StructuredTool:
         result = await researcher.search(query, thread_id or None)
         return result.result
 
+    def sync_web_search(query: str, thread_id: str = "") -> str:
+        return _executor.submit(asyncio.run, web_search(query, thread_id)).result()
+
     return StructuredTool.from_function(
+        func=sync_web_search,
         coroutine=web_search,
         name="web_search",
         description="Search the web for up-to-date information on a given query.",

@@ -63,6 +63,23 @@ def agent():
     return AgentGraph(MockNodesProvider(), checkpointer=MemorySaver())
 
 
+@pytest.fixture
+def agent_with_tool_call():
+    return AgentGraph(
+        MockNodesProvider(emit_tool_call=True), checkpointer=MemorySaver()
+    )
+
+
+@pytest.fixture
+def agent_with_real_tool_node():
+    return AgentGraph(_RealToolNodeProvider(), checkpointer=MemorySaver())
+
+
+# ---------------------------------------------------------------------------
+# invoke
+# ---------------------------------------------------------------------------
+
+
 def test_first_invocation_maps_project(agent):
     result = agent.invoke("hi")
     contents = [m.content for m in result["messages"]]
@@ -96,13 +113,6 @@ def test_force_mapping_remaps_after_first_run(agent):
     ]
 
 
-@pytest.fixture
-def agent_with_tool_call():
-    return AgentGraph(
-        MockNodesProvider(emit_tool_call=True), checkpointer=MemorySaver()
-    )
-
-
 def test_tool_routing_subsequent_invoke_skips_tool_call(agent_with_tool_call):
     agent_with_tool_call.invoke("hi")
     result = agent_with_tool_call.invoke("hello")
@@ -123,6 +133,11 @@ def test_mermaid_diagram_contains_all_nodes(agent):
     assert "map_project_node" in diagram
     assert "orchestrator_node" in diagram
     assert "tools" in diagram
+
+
+# ---------------------------------------------------------------------------
+# stream
+# ---------------------------------------------------------------------------
 
 
 def test_stream_first_invocation_yields_map_then_orchestrator(agent):
@@ -197,11 +212,6 @@ def test_get_history_omits_tool_call_messages(agent_with_tool_call):
 # ---------------------------------------------------------------------------
 # Real ToolNode execution with mock tools
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def agent_with_real_tool_node():
-    return AgentGraph(_RealToolNodeProvider(), checkpointer=MemorySaver())
 
 
 def test_tool_node_executes_mock_tool_and_returns_result(agent_with_real_tool_node):

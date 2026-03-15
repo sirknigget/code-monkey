@@ -25,11 +25,17 @@ class NodesProvider(ABC):
     def tool_node(self, state: ChatbotState) -> dict:
         """Execute tool calls from the last AI message."""
 
+    async def teardown(self) -> None:
+        """Release any resources held by this provider. No-op by default."""
+
 
 class DefaultNodesProvider(NodesProvider):
-    def __init__(self, tool_node: ToolNode, orchestrator_node_fn) -> None:
+    def __init__(
+        self, tool_node: ToolNode, orchestrator_node_fn, researcher: WebResearcher
+    ) -> None:
         self._tool_node = tool_node
         self._orchestrator_node = orchestrator_node_fn
+        self._researcher = researcher
 
     @classmethod
     async def create(
@@ -47,7 +53,7 @@ class DefaultNodesProvider(NodesProvider):
         orchestrator_node_fn = make_orchestrator_node(
             model_config.orchestrator_model().bind_tools(tools)
         )
-        return cls(tool_node, orchestrator_node_fn)
+        return cls(tool_node, orchestrator_node_fn, researcher)
 
     def map_project_node(self, state: ChatbotState) -> dict:
         return map_project_node(state)
@@ -57,3 +63,6 @@ class DefaultNodesProvider(NodesProvider):
 
     def tool_node(self, state: ChatbotState) -> dict:
         return self._tool_node.invoke(state)
+
+    async def teardown(self) -> None:
+        await self._researcher.teardown()

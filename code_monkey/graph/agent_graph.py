@@ -45,6 +45,7 @@ class AgentGraph:
         checkpointer: BaseCheckpointSaver,
         thread_id: str = "session",
     ) -> None:
+        self._nodes_provider = nodes_provider
         self._checkpointer = checkpointer
         self._thread_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         self._graph = self._build(nodes_provider, checkpointer)
@@ -60,6 +61,10 @@ class AgentGraph:
         """Async factory: creates all nodes and tools, returns AgentGraph."""
         nodes_provider = await DefaultNodesProvider.create(project_root, model_config)
         return cls(nodes_provider, checkpointer, thread_id)
+
+    async def teardown(self) -> None:
+        """Release resources held by the graph (e.g. Playwright browser)."""
+        await self._nodes_provider.teardown()
 
     def invoke(self, message: str, force_mapping: bool = False) -> dict:
         return self._graph.invoke(

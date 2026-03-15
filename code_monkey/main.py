@@ -25,7 +25,10 @@ async def _main() -> None:
         model_config=ModelConfig(),
         thread_id=DEFAULT_THREAD_ID,
     )
-    Controller(SimpleCliChatbotUI(), graph).run()
+    try:
+        Controller(SimpleCliChatbotUI(), graph).run()
+    finally:
+        await graph.teardown()
 
 
 def main() -> None:

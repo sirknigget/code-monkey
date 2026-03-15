@@ -29,6 +29,7 @@ dependencies = [
     "pyte>=0.8.2",
     "langgraph-checkpoint-sqlite>=3.0.3",
     "langchain-experimental>=0.4.1",
+    "aiosqlite>=0.22.1",
 ]
 [tool.ruff]
 exclude = ["mock_project", "tests/output"]
