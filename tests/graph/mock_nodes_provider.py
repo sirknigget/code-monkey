@@ -9,13 +9,13 @@ class MockNodesProvider(NodesProvider):
         self._emit_tool_call = emit_tool_call
         self._tool_call_emitted = False
 
-    def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(self, state: ChatbotState) -> dict:
         return {
             "messages": [AIMessage(content="[mock] project mapped")],
             "needs_mapping": False,
         }
 
-    def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(self, state: ChatbotState) -> dict:
         if self._emit_tool_call and not self._tool_call_emitted:
             self._tool_call_emitted = True
             return {
@@ -35,5 +35,5 @@ class MockNodesProvider(NodesProvider):
             }
         return {"messages": [AIMessage(content="[mock] orchestrator decision")]}
 
-    def tool_node(self, state: ChatbotState) -> dict:
+    async def tool_node(self, state: ChatbotState) -> dict:
         return {"messages": [AIMessage(content="[mock] tool result")]}

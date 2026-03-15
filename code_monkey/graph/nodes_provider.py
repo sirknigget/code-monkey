@@ -14,15 +14,15 @@ from code_monkey.models.model_config import ModelConfig
 
 class NodesProvider(ABC):
     @abstractmethod
-    def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(self, state: ChatbotState) -> dict:
         """Analyze and map the project structure."""
 
     @abstractmethod
-    def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(self, state: ChatbotState) -> dict:
         """Route or coordinate between other nodes."""
 
     @abstractmethod
-    def tool_node(self, state: ChatbotState) -> dict:
+    async def tool_node(self, state: ChatbotState) -> dict:
         """Execute tool calls from the last AI message."""
 
     async def teardown(self) -> None:
@@ -55,14 +55,14 @@ class DefaultNodesProvider(NodesProvider):
         )
         return cls(tool_node, orchestrator_node_fn, researcher)
 
-    def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(self, state: ChatbotState) -> dict:
         return map_project_node(state)
 
-    def orchestrator_node(self, state: ChatbotState) -> dict:
-        return self._orchestrator_node(state)
+    async def orchestrator_node(self, state: ChatbotState) -> dict:
+        return await self._orchestrator_node(state)
 
-    def tool_node(self, state: ChatbotState) -> dict:
-        return self._tool_node.invoke(state)
+    async def tool_node(self, state: ChatbotState) -> dict:
+        return await self._tool_node.ainvoke(state)
 
     async def teardown(self) -> None:
         await self._researcher.teardown()

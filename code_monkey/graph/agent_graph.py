@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -66,16 +66,16 @@ class AgentGraph:
         """Release resources held by the graph (e.g. Playwright browser)."""
         await self._nodes_provider.teardown()
 
-    def invoke(self, message: str, force_mapping: bool = False) -> dict:
-        return self._graph.invoke(
-            self._initial_state(message, force_mapping),
-            config=self._run_config(),
+    async def astream(
+        self, message: str, force_mapping: bool = False
+    ) -> AsyncIterator[str]:
+        """Stream text content of each visible AI message as the graph runs."""
+        is_new_session = (
+            await self._checkpointer.aget_tuple(self._thread_config) is None
         )
-
-    def stream(self, message: str, force_mapping: bool = False) -> Iterator[str]:
-        """Yield text content of each AI message as the graph runs node by node."""
-        for update in self._graph.stream(
-            self._initial_state(message, force_mapping),
+        state = self._make_state(message, force_mapping, is_new_session)
+        async for update in self._graph.astream(
+            state,
             config=self._run_config(),
             stream_mode="updates",
         ):
@@ -84,13 +84,9 @@ class AgentGraph:
                     if _is_text_ai_message(msg):
                         yield msg.content
 
-    def get_history(self) -> Iterator[tuple[str, str]]:
-        """Yield (role, content) pairs from the persisted checkpoint.
-
-        role is "user" for HumanMessages and "assistant" for text AIMessages.
-        Tool-call AIMessages are omitted.
-        """
-        checkpoint = self._checkpointer.get(self._thread_config)
+    async def aget_history(self) -> AsyncIterator[tuple[str, str]]:
+        """Yield (role, content) pairs from the persisted checkpoint."""
+        checkpoint = await self._checkpointer.aget(self._thread_config)
         if checkpoint is None:
             return
         for msg in checkpoint.get("channel_values", {}).get("messages", []):
@@ -99,20 +95,21 @@ class AgentGraph:
             elif _is_text_ai_message(msg):
                 yield "assistant", msg.content
 
-    def has_checkpoint(self) -> bool:
-        """Return True if a persisted checkpoint exists for this thread."""
-        return self._checkpointer.get(self._thread_config) is not None
+    async def ahas_checkpoint(self) -> bool:
+        """Return True if a persisted checkpoint exists."""
+        return await self._checkpointer.aget_tuple(self._thread_config) is not None
 
-    def clear(self) -> None:
+    async def aclear(self) -> None:
         """Delete the persisted checkpoint for this thread."""
         thread_id = self._thread_config["configurable"]["thread_id"]
-        self._checkpointer.delete_thread(thread_id)
+        await self._checkpointer.adelete_thread(thread_id)
 
     def get_mermaid_diagram(self) -> str:
         return self._graph.get_graph().draw_mermaid()
 
-    def _initial_state(self, message: str, force_mapping: bool) -> ChatbotState:
-        is_new_session = self._checkpointer.get(self._thread_config) is None
+    def _make_state(
+        self, message: str, force_mapping: bool, is_new_session: bool
+    ) -> ChatbotState:
         return {
             "messages": [HumanMessage(content=message)],
             "needs_mapping": force_mapping or is_new_session,

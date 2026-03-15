@@ -10,19 +10,20 @@ class Controller:
     def __init__(self, ui: ChatbotUI, graph: AgentGraph) -> None:
         self._ui = ui
         self._graph = graph
-        if self._graph.has_checkpoint():
-            self._replay_history()
 
-    def _replay_history(self) -> None:
-        for role, content in self._graph.get_history():
+    async def _replay_history(self) -> None:
+        async for role, content in self._graph.aget_history():
             if role == "user":
                 self._ui.user_message(content)
             else:
                 self._ui.assistant_message(content)
         self._ui.system_message("Resuming previous session.")
 
-    def run(self) -> None:
+    async def run(self) -> None:
         """Run the CLI loop until the user signals exit."""
+        if await self._graph.ahas_checkpoint():
+            await self._replay_history()
+
         while True:
             try:
                 event = self._ui.get_input("You: ")
@@ -30,12 +31,12 @@ class Controller:
                 return
 
             if event.command == Command.CLEAR:
-                self._graph.clear()
+                await self._graph.aclear()
                 self._ui.system_message("Session cleared.")
                 continue
 
             if not event.text.strip():
                 continue
 
-            for content in self._graph.stream(event.text):
+            async for content in self._graph.astream(event.text):
                 self._ui.assistant_message(content)

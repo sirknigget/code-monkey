@@ -1,10 +1,8 @@
 """Tests for the Controller CLI loop."""
 
-import sqlite3
-
 import pytest
 from langchain_core.messages import AIMessage
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.memory import MemorySaver
 
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
@@ -14,16 +12,16 @@ from code_monkey.ui.protocol import Command, InputEvent
 
 
 class _MockNodesProvider(NodesProvider):
-    def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(self, state: ChatbotState) -> dict:
         return {
             "messages": [AIMessage(content="[mock] project mapped")],
             "needs_mapping": False,
         }
 
-    def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(self, state: ChatbotState) -> dict:
         return {"messages": [AIMessage(content="[mock] orchestrator decision")]}
 
-    def tool_node(self, state: ChatbotState) -> dict:
+    async def tool_node(self, state: ChatbotState) -> dict:
         return {"messages": [AIMessage(content="[mock] tool result")]}
 
 
@@ -51,67 +49,74 @@ class _MockUI:
         self.messages.append(("error", text))
 
 
-def _make_graph(db_path: str) -> AgentGraph:
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
-    checkpointer.setup()
+def _make_graph(checkpointer: MemorySaver | None = None) -> AgentGraph:
     return AgentGraph(
-        _MockNodesProvider(), checkpointer=checkpointer, thread_id="session"
+        _MockNodesProvider(),
+        checkpointer=checkpointer or MemorySaver(),
+        thread_id="session",
     )
 
 
-@pytest.fixture
-def db_path(tmp_path):
-    return str(tmp_path / "checkpoints.db")
-
-
-def _run(db_path: str, inputs: list[InputEvent]) -> _MockUI:
+async def _run(
+    inputs: list[InputEvent], checkpointer: MemorySaver | None = None
+) -> _MockUI:
     ui = _MockUI(inputs)
-    Controller(ui, _make_graph(db_path)).run()
+    await Controller(ui, _make_graph(checkpointer)).run()
     return ui
 
 
-def test_user_input_produces_assistant_response(db_path):
-    ui = _run(db_path, [InputEvent("hello")])
+@pytest.mark.asyncio
+async def test_user_input_produces_assistant_response():
+    ui = await _run([InputEvent("hello")])
     assert [content for kind, content in ui.messages if kind == "assistant"] == [
         "[mock] project mapped",
         "[mock] orchestrator decision",
     ]
 
 
-def test_empty_input_reprompts_without_invoking_graph(db_path):
-    ui = _run(db_path, [InputEvent(""), InputEvent("   ")])
+@pytest.mark.asyncio
+async def test_empty_input_reprompts_without_invoking_graph():
+    ui = await _run([InputEvent(""), InputEvent("   ")])
     assert all(kind != "assistant" for kind, _ in ui.messages)
 
 
-def test_exit_signal_exits_cleanly(db_path):
-    _run(db_path, [])  # no inputs → immediate SystemExit; must not raise
+@pytest.mark.asyncio
+async def test_exit_signal_exits_cleanly():
+    await _run([])  # no inputs → immediate SystemExit; must not raise
 
 
-def test_clear_shows_session_cleared_message(db_path):
-    ui = _run(db_path, [InputEvent("/clear", Command.CLEAR)])
+@pytest.mark.asyncio
+async def test_clear_shows_session_cleared_message():
+    ui = await _run([InputEvent("/clear", Command.CLEAR)])
     assert ("system", "Session cleared.") in ui.messages
 
 
-def test_clear_then_message_still_produces_response(db_path):
-    ui = _run(db_path, [InputEvent("/clear", Command.CLEAR), InputEvent("hello")])
+@pytest.mark.asyncio
+async def test_clear_then_message_still_produces_response():
+    ui = await _run([InputEvent("/clear", Command.CLEAR), InputEvent("hello")])
     assert [content for kind, content in ui.messages if kind == "assistant"] == [
         "[mock] project mapped",
         "[mock] orchestrator decision",
     ]
 
 
-def test_session_persists_across_restart(db_path):
-    _run(db_path, [InputEvent("hello")])
+@pytest.mark.asyncio
+async def test_session_persists_across_restart():
+    shared = MemorySaver()
+    await _run([InputEvent("hello")], checkpointer=shared)
 
     ui2 = _MockUI([])
-    Controller(ui2, _make_graph(db_path)).run()
+    await Controller(ui2, _make_graph(shared)).run()
     assert ("system", "Resuming previous session.") in ui2.messages
 
 
-def test_clear_then_restart_starts_fresh(db_path):
-    _run(db_path, [InputEvent("hello"), InputEvent("/clear", Command.CLEAR)])
+@pytest.mark.asyncio
+async def test_clear_then_restart_starts_fresh():
+    shared = MemorySaver()
+    await _run(
+        [InputEvent("hello"), InputEvent("/clear", Command.CLEAR)], checkpointer=shared
+    )
 
     ui2 = _MockUI([])
-    Controller(ui2, _make_graph(db_path)).run()
+    await Controller(ui2, _make_graph(shared)).run()
     assert all(content != "Resuming previous session." for _, content in ui2.messages)
