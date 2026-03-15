@@ -17,7 +17,7 @@ async def test_web_researcher_search():
     model = get_openai_model()
     researcher = await WebResearcher.create(model=model, headless=True)
 
-    query = "What is the latest price of BTC and its recent trend?"
+    query = "What happened between US and Iran in March 2026?"
     result = await researcher.search(query)
 
     logger.info(f"\n=== Web Researcher Result for '{query}' ===")
