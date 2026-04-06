@@ -8,7 +8,7 @@ from code_monkey.graph.nodes.orchestrator_node import make_orchestrator_node
 from code_monkey.graph.state import ChatbotState
 from code_monkey.graph.tools.bash_tool import bash_tool
 from code_monkey.graph.tools.file_tools import create_file_tools
-from code_monkey.graph.tools.web_researcher_tool import create_web_researcher_tool
+from code_monkey.graph.tools.web_researcher_tool import web_researcher_tool
 from code_monkey.models.model_config import ModelConfig
 
 
@@ -24,6 +24,10 @@ class NodesProvider(ABC):
     @abstractmethod
     async def tool_node(self, state: ChatbotState) -> dict:
         """Execute tool calls from the last AI message."""
+
+    def configurable_fields(self) -> dict:
+        """Return extra fields to merge into RunnableConfig.configurable. No-op by default."""
+        return {}
 
     async def teardown(self) -> None:
         """Release any resources held by this provider. No-op by default."""
@@ -45,7 +49,7 @@ class DefaultNodesProvider(NodesProvider):
             model=model_config.web_researcher_model()
         )
         tools = [
-            create_web_researcher_tool(researcher),
+            web_researcher_tool,
             *create_file_tools(root_dir=project_root),
             bash_tool,
         ]
@@ -54,6 +58,9 @@ class DefaultNodesProvider(NodesProvider):
             model_config.orchestrator_model().bind_tools(tools)
         )
         return cls(tool_node, orchestrator_node_fn, researcher)
+
+    def configurable_fields(self) -> dict:
+        return {"web_researcher": self._researcher}
 
     async def map_project_node(self, state: ChatbotState) -> dict:
         return map_project_node(state)

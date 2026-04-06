@@ -1,3 +1,4 @@
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
@@ -11,16 +12,17 @@ class WebSearchInput(BaseModel):
     )
 
 
-def create_web_researcher_tool(researcher: WebResearcher) -> StructuredTool:
-    """Create a LangChain tool wrapping the given WebResearcher instance."""
+async def _web_search(
+    query: str, thread_id: str = "", *, config: RunnableConfig
+) -> str:
+    researcher: WebResearcher = (config.get("configurable") or {})["web_researcher"]
+    result = await researcher.search(query, thread_id or None)
+    return result.result
 
-    async def web_search(query: str, thread_id: str = "") -> str:
-        result = await researcher.search(query, thread_id or None)
-        return result.result
 
-    return StructuredTool.from_function(
-        coroutine=web_search,
-        name="web_search",
-        description="Search the web for up-to-date information on a given query.",
-        args_schema=WebSearchInput,
-    )
+web_researcher_tool = StructuredTool.from_function(
+    coroutine=_web_search,
+    name="web_search",
+    description="Search the web for up-to-date information on a given query.",
+    args_schema=WebSearchInput,
+)

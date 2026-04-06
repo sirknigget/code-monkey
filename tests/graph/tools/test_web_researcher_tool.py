@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from code_monkey.agents.web_researcher.web_researcher import SearchResult, WebResearcher
-from code_monkey.graph.tools.web_researcher_tool import create_web_researcher_tool
+from code_monkey.graph.tools.web_researcher_tool import web_researcher_tool
 
 
 @pytest.fixture
@@ -17,10 +17,9 @@ def mock_researcher():
 
 @pytest.mark.asyncio
 async def test_web_researcher_tool_returns_result(mock_researcher):
-    tool = create_web_researcher_tool(mock_researcher)
-
-    result = await tool.ainvoke(
-        {"query": "What is the price of BTC?", "thread_id": "abc123"}
+    result = await web_researcher_tool.ainvoke(
+        {"query": "What is the price of BTC?", "thread_id": "abc123"},
+        config={"configurable": {"web_researcher": mock_researcher}},
     )
 
     assert result == "BTC is at $60,000"
@@ -31,18 +30,9 @@ async def test_web_researcher_tool_returns_result(mock_researcher):
 
 @pytest.mark.asyncio
 async def test_web_researcher_tool_uses_none_when_thread_id_empty(mock_researcher):
-    tool = create_web_researcher_tool(mock_researcher)
-
-    await tool.ainvoke({"query": "latest news", "thread_id": ""})
+    await web_researcher_tool.ainvoke(
+        {"query": "latest news", "thread_id": ""},
+        config={"configurable": {"web_researcher": mock_researcher}},
+    )
 
     mock_researcher.search.assert_called_once_with("latest news", None)
-
-
-@pytest.mark.asyncio
-async def test_web_researcher_tool_uses_injected_researcher(mock_researcher):
-    """Verifies the tool delegates to the injected researcher, not a newly created one."""
-    tool = create_web_researcher_tool(mock_researcher)
-
-    await tool.ainvoke({"query": "test", "thread_id": "t1"})
-
-    mock_researcher.search.assert_called_once()

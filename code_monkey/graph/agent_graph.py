@@ -47,6 +47,7 @@ class AgentGraph:
     ) -> None:
         self._nodes_provider = nodes_provider
         self._checkpointer = checkpointer
+        self._thread_id = thread_id
         self._thread_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         self._graph = self._build(nodes_provider, checkpointer)
 
@@ -118,10 +119,15 @@ class AgentGraph:
         }
 
     def _run_config(self) -> RunnableConfig:
-        return {
-            **self._thread_config,
-            **({("callbacks"): [_DebugCallbackHandler()]} if DEBUG else {}),
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": self._thread_id,
+                **self._nodes_provider.configurable_fields(),
+            },
         }
+        if DEBUG:
+            config["callbacks"] = [_DebugCallbackHandler()]
+        return config
 
     @staticmethod
     def _build(
