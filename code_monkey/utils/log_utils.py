@@ -8,5 +8,7 @@ def suppress_noisy_loggers():
         "urllib3",
         "openai._base_client",
         "langsmith",
+        "aiosqlite",
+        "asyncio",
     ):
         logging.getLogger(_noisy_logger).setLevel(logging.WARNING)

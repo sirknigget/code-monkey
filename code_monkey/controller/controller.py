@@ -44,6 +44,9 @@ class Controller:
                 self._ui.system_message("Project mapping scheduled for next message.")
                 continue
 
+            if event.command == Command.EXIT:
+                return
+
             if not event.text.strip():
                 continue
 

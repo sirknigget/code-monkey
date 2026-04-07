@@ -14,7 +14,9 @@ from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
 from code_monkey.utils.log_utils import suppress_noisy_loggers
 
 logging.basicConfig(
-    level=logging.DEBUG, format="%(levelname)s: %(message)s", stream=sys.stdout
+    level=logging.DEBUG,
+    format="%(levelname)s: %(name)s: %(message)s",
+    stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
 suppress_noisy_loggers()
