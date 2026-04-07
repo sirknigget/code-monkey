@@ -4,6 +4,8 @@ from langchain_core.tools import tool as lc_tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 
+from langchain_core.runnables import RunnableConfig
+
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
@@ -28,7 +30,9 @@ class _RealToolNodeProvider(NodesProvider):
         self._tool_node = ToolNode([_mock_search])
         self._tool_call_emitted = False
 
-    async def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         return {
             "messages": [AIMessage(content="[mock] project mapped")],
             "needs_mapping": False,

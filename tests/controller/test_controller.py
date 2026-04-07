@@ -4,6 +4,8 @@ import pytest
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 
+from langchain_core.runnables import RunnableConfig
+
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.nodes_provider import NodesProvider
@@ -12,7 +14,9 @@ from code_monkey.ui.protocol import Command, InputEvent
 
 
 class _MockNodesProvider(NodesProvider):
-    async def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         return {
             "messages": [AIMessage(content="[mock] project mapped")],
             "needs_mapping": False,
