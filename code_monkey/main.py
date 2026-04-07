@@ -20,14 +20,19 @@ logger = get_formatted_logger(__name__)
 
 
 async def _main(project_root: str) -> None:
+    logger.info(
+        "Starting code-monkey CLI assistant with project root: %s", project_root
+    )
     ui = SimpleCliChatbotUI()
 
+    logger.debug("Initializing checkpointer...")
     result = await make_checkpointer()
     for error in result.errors:
         ui.show_error(error)
     if result.checkpointer is None:
         return
 
+    logger.debug("Creating agent graph...")
     graph = await AgentGraph.create(
         checkpointer=result.checkpointer,
         project_root=project_root,
@@ -35,7 +40,11 @@ async def _main(project_root: str) -> None:
         thread_id=DEFAULT_THREAD_ID,
     )
     try:
+        logger.debug("Running controller...")
         await Controller(ui, graph).run()
+    except Exception as e:
+        logger.exception("Fatal error in main loop")
+        ui.show_error(f"Fatal error: {e}")
     finally:
         logger.debug("Shutting down...")
         ui.system_message("Shutting down...")

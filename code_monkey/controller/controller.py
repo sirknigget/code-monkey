@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.ui.protocol import ChatbotUI, Command
@@ -17,6 +16,7 @@ class Controller:
         self._graph = graph
 
     async def _replay_history(self) -> None:
+        logger.debug("Replaying conversation history...")
         async for role, content in self._graph.aget_history():
             if role == "user":
                 self._ui.user_message(content)
@@ -31,8 +31,10 @@ class Controller:
 
         while True:
             try:
+                logger.debug("Waiting for user input...")
                 event = self._ui.get_input("You: ")
             except SystemExit:
+                logger.info("Exit command received. Shutting down.")
                 return
 
             if event.command == Command.CLEAR:
