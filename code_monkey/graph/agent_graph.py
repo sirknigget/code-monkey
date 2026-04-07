@@ -80,9 +80,13 @@ class AgentGraph:
         if checkpoint is None:
             return
         for msg in checkpoint.get("channel_values", {}).get("messages", []):
-            if isinstance(msg, HumanMessage) and msg.content:
+            if (
+                isinstance(msg, HumanMessage)
+                and isinstance(msg.content, str)
+                and msg.content
+            ):
                 yield "user", msg.content
-            elif _is_text_ai_message(msg):
+            elif _is_text_ai_message(msg) and isinstance(msg.content, str):
                 yield "assistant", msg.content
 
     async def ahas_checkpoint(self) -> bool:
@@ -91,8 +95,7 @@ class AgentGraph:
 
     async def aclear(self) -> None:
         """Delete the persisted checkpoint for this thread."""
-        thread_id = self._thread_config["configurable"]["thread_id"]
-        await self._checkpointer.adelete_thread(thread_id)
+        await self._checkpointer.adelete_thread(self._thread_id)
 
     def get_mermaid_diagram(self) -> str:
         return self._graph.get_graph().draw_mermaid()
@@ -140,7 +143,9 @@ class AgentGraph:
         graph.add_conditional_edges(
             "orchestrator_node",
             lambda state: (
-                "tools" if cast(ChatbotState, state)["messages"][-1].tool_calls else END
+                "tools"
+                if cast(AIMessage, cast(ChatbotState, state)["messages"][-1]).tool_calls
+                else END
             ),
         )
         graph.add_edge("tools", "orchestrator_node")
