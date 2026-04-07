@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from code_monkey.agents.project_librarian.utils.project_structure import ProjectStructure
+from code_monkey.agents.project_librarian.utils.project_structure import (
+    ProjectStructure,
+)
 
 
 class TestBuildRootLabel:
-    def test_root_folder_name_is_first_line(self, tmp_path: Path) -> None:
+    def test_root_label_is_dot_slash(self, tmp_path: Path) -> None:
         result = ProjectStructure(tmp_path).build()
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
 
 
 class TestSingleFile:
@@ -19,14 +21,14 @@ class TestSingleFile:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── main.py"
+        assert result == "./\n└── main.py"
 
     def test_tree_connector_used_for_single_entry(self, tmp_path: Path) -> None:
         (tmp_path / "main.py").write_text("# main", encoding="utf-8")
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── main.py"
+        assert result == "./\n└── main.py"
 
 
 class TestNestedDirectory:
@@ -37,7 +39,7 @@ class TestNestedDirectory:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── pkg/\n    └── mod.py"
+        assert result == "./\n└── pkg/\n    └── mod.py"
 
     def test_nested_file_appears_indented(self, tmp_path: Path) -> None:
         pkg = tmp_path / "pkg"
@@ -46,7 +48,7 @@ class TestNestedDirectory:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── pkg/\n    └── mod.py"
+        assert result == "./\n└── pkg/\n    └── mod.py"
 
     def test_multiple_files_branch_and_last_connectors(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("", encoding="utf-8")
@@ -54,7 +56,7 @@ class TestNestedDirectory:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n├── a.py\n└── b.py"
+        assert result == "./\n├── a.py\n└── b.py"
 
 
 class TestPythonIgnoreList:
@@ -65,7 +67,7 @@ class TestPythonIgnoreList:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
 
     def test_venv_excluded(self, tmp_path: Path) -> None:
         venv = tmp_path / ".venv"
@@ -74,7 +76,7 @@ class TestPythonIgnoreList:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
 
     def test_codemonkey_cache_excluded(self, tmp_path: Path) -> None:
         cache = tmp_path / ".codemonkey"
@@ -83,7 +85,7 @@ class TestPythonIgnoreList:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
 
     def test_git_dir_excluded(self, tmp_path: Path) -> None:
         git = tmp_path / ".git"
@@ -92,7 +94,7 @@ class TestPythonIgnoreList:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
 
 
 class TestGitignore:
@@ -104,7 +106,7 @@ class TestGitignore:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── .gitignore"
+        assert result == "./\n└── .gitignore"
 
     def test_gitignored_file_pattern_excluded(self, tmp_path: Path) -> None:
         (tmp_path / "local.cfg").write_text("secret=1", encoding="utf-8")
@@ -113,7 +115,7 @@ class TestGitignore:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n├── .gitignore\n└── app.py"
+        assert result == "./\n├── .gitignore\n└── app.py"
 
     def test_gitignore_comments_and_blank_lines_skipped(self, tmp_path: Path) -> None:
         (tmp_path / "keep.py").write_text("", encoding="utf-8")
@@ -124,14 +126,14 @@ class TestGitignore:
         # "keep.py" IS ignored per .gitignore — confirm it is excluded
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── .gitignore"
+        assert result == "./\n└── .gitignore"
 
     def test_no_gitignore_does_not_raise(self, tmp_path: Path) -> None:
         (tmp_path / "main.py").write_text("", encoding="utf-8")
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n└── main.py"
+        assert result == "./\n└── main.py"
 
 
 class TestSortingOrder:
@@ -143,11 +145,11 @@ class TestSortingOrder:
 
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/\n├── a_pkg/\n│   └── mod.py\n└── z_file.py"
+        assert result == "./\n├── a_pkg/\n│   └── mod.py\n└── z_file.py"
 
 
 class TestEmptyDirectory:
     def test_empty_root_produces_only_root_label(self, tmp_path: Path) -> None:
         result = ProjectStructure(tmp_path).build()
 
-        assert result == f"{tmp_path.name}/"
+        assert result == "./"
