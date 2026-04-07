@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
@@ -76,7 +78,8 @@ def _cache(working_dir: Path) -> CacheManager:
 class TestInitialMapping:
     """First run: no cache exists, all files must be summarized and persisted."""
 
-    def test_cache_files_created_with_expected_content(
+    @pytest.mark.asyncio
+    async def test_cache_files_created_with_expected_content(
         self, mock_project_working_copy: Path
     ) -> None:
         # 23 .py files, 11 module directories (output, src, src/crewai_trading_strategy,
@@ -97,7 +100,7 @@ class TestInitialMapping:
                 wraps=mapper.summarizer.summarize_module,
             ) as spy_module,
         ):
-            mapper.map_project()
+            await mapper.map_project()
 
         assert spy_file.call_count == 23
         assert spy_module.call_count == 11
@@ -149,15 +152,17 @@ class TestInitialMapping:
 class TestCompositeFileChanges:
     """Second run after composite changes: modify, add, and delete in one step."""
 
-    def test_modified_added_deleted_files_reflected_in_cache(
+    @pytest.mark.asyncio
+    async def test_modified_added_deleted_files_reflected_in_cache(
         self, mock_project_working_copy: Path
     ) -> None:
         # --- Initial mapping ---
-        _make_mapper(mock_project_working_copy).map_project()
+        await _make_mapper(mock_project_working_copy).map_project()
 
         # Capture the summary of an unchanged file before the second run
         cache = _cache(mock_project_working_copy)
         context_after_first = cache.load_code_context()
+        assert context_after_first is not None
         date_utils_summary_before = (
             context_after_first.submodules["src"]
             .submodules["utils"]
@@ -200,13 +205,14 @@ class TestCompositeFileChanges:
                 wraps=mapper2.summarizer.summarize_module,
             ) as spy_module,
         ):
-            mapper2.map_project()
+            await mapper2.map_project()
 
         assert spy_file.call_count == 2
         assert spy_module.call_count == 4
 
         cache2 = _cache(mock_project_working_copy)
         context2 = cache2.load_code_context()
+        assert context2 is not None
 
         src_module = context2.submodules["src"]
         pkg = src_module.submodules["crewai_trading_strategy"]

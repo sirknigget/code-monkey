@@ -33,7 +33,7 @@ class ProjectMapper:
         self.summarizer = summarizer
         self.summarizer._working_dir = working_dir
 
-    def map_project(self) -> None:
+    async def map_project(self) -> None:
         """Build (or incrementally update) the full project context and persist it.
 
         Summarizes changed files and modules bottom-up, then builds a project-level
@@ -54,7 +54,7 @@ class ProjectMapper:
         )
 
         context = self._build_revised_context(hashes.modified_only, cached_context)
-        asyncio.run(self._summarize_bottom_up(context, self.working_dir))
+        await self._summarize_bottom_up(context, self.working_dir)
 
         project_structure = ProjectStructure(self.working_dir).build()
         project_summary = self.summarizer.summarize_project(
@@ -153,6 +153,7 @@ class ProjectMapper:
         submodule_infos = [
             Summarizer.FileInfo(filepath=current_dir / name, summary=submodule.summary)
             for name, submodule in submodule_items
+            if submodule.summary is not None
         ]
 
         file_infos = [

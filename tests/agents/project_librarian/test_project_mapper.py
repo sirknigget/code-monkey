@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
 from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
@@ -42,7 +44,8 @@ class TestNoChanges:
     file and module summarizers must not be called; project summary is always
     regenerated and all outputs are persisted to cache."""
 
-    def test_cached_summaries_persisted_unchanged(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_cached_summaries_persisted_unchanged(self, tmp_path: Path) -> None:
         cached_context = ModuleContext(
             summary="root-summary",
             files={
@@ -68,7 +71,7 @@ class TestNoChanges:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         summarizer.summarize_file.assert_not_called()
         summarizer.summarize_module.assert_not_called()
@@ -98,7 +101,8 @@ class TestFirstRun:
     """When there is no cached context and modified_files contains new files,
     every file and module must be summarized and all outputs persisted."""
 
-    def test_all_files_summarized_and_saved(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_all_files_summarized_and_saved(self, tmp_path: Path) -> None:
         # Create actual files so read_text() works
         pkg_dir = tmp_path / "pkg"
         pkg_dir.mkdir()
@@ -127,7 +131,7 @@ class TestFirstRun:
             mock_cache.return_value.load_code_context.return_value = None
             mock_structure.return_value.build.return_value = "project-structure"
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         assert summarizer.summarize_file.call_count == 2
         assert summarizer.summarize_module.call_count == 2
@@ -156,7 +160,10 @@ class TestModifiedFile:
     """When one file is modified, that file gets a new summary, its parent
     module is re-summarized, and unchanged sibling files retain cached summaries."""
 
-    def test_only_modified_file_and_parent_resummarized(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_only_modified_file_and_parent_resummarized(
+        self, tmp_path: Path
+    ) -> None:
         pkg_dir = tmp_path / "pkg"
         pkg_dir.mkdir()
         # Only the modified file needs to exist on disk for read_text
@@ -197,7 +204,7 @@ class TestModifiedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         pkg = saved_context.submodules["pkg"]
@@ -223,7 +230,10 @@ class TestDeletedFile:
     """When a file hash is None (deleted), the file must be absent from the
     saved context and the parent module must be re-summarized."""
 
-    def test_deleted_file_absent_and_module_resummarized(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_deleted_file_absent_and_module_resummarized(
+        self, tmp_path: Path
+    ) -> None:
         pkg_dir = tmp_path / "pkg"
         pkg_dir.mkdir()
         # "kept.py" still exists; "deleted.py" does not
@@ -261,7 +271,7 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         pkg = saved_context.submodules["pkg"]
@@ -285,7 +295,8 @@ class TestBottomUpOrder:
     """Verify summarize_file is called before summarize_module for the same
     module, and deeper modules are processed before shallower ones."""
 
-    def test_summarize_order(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_summarize_order(self, tmp_path: Path) -> None:
         # Structure: tmp_path/pkg/sub/deep.py  and  tmp_path/pkg/top.py
         pkg_dir = tmp_path / "pkg"
         sub_dir = pkg_dir / "sub"
@@ -325,7 +336,7 @@ class TestBottomUpOrder:
             mock_cache.return_value.load_code_context.return_value = None
             mock_structure.return_value.build.return_value = "project-structure"
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         # 2 files changed → 2 file summarizations
         assert summarizer.summarize_file.call_count == 2
@@ -351,7 +362,8 @@ class TestBottomUpOrder:
 class TestSaveOrder:
     """Verify that hashes are saved last — after code context and project context."""
 
-    def test_hashes_saved_after_context(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_hashes_saved_after_context(self, tmp_path: Path) -> None:
         summarizer = make_summarizer()
         save_order: list[str] = []
 
@@ -376,7 +388,7 @@ class TestSaveOrder:
                 save_order.append("hashes")
             )
 
-            ProjectMapper(tmp_path, summarizer).map_project()
+            await ProjectMapper(tmp_path, summarizer).map_project()
 
         assert save_order == ["code", "project", "hashes"]
         # No files → no file summarizations; empty root still gets module-summarized
