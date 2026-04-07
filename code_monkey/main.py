@@ -11,17 +11,17 @@ from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.checkpointer import DEFAULT_THREAD_ID, make_checkpointer
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
-from code_monkey.utils.log_utils import suppress_noisy_loggers
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(levelname)s: %(name)s: %(message)s",
-    stream=sys.stdout,
+from code_monkey.utils.log_utils import (
+    get_formatted_logger,
+    logging_basic_config,
+    suppress_noisy_loggers,
 )
-logger = logging.getLogger(__name__)
-suppress_noisy_loggers()
 
 load_dotenv(override=True)
+
+# logging_basic_config()
+suppress_noisy_loggers()
+logger = get_formatted_logger(__name__)
 
 
 async def _main() -> None:
@@ -42,6 +42,8 @@ async def _main() -> None:
     try:
         await Controller(ui, graph).run()
     finally:
+        logger.debug("Shutting down...")
+        ui.system_message("Shutting down...")
         await graph.teardown()
         await result.checkpointer.conn.close()
 

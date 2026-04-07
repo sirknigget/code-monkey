@@ -15,8 +15,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
+from code_monkey.utils.log_utils import get_formatted_logger
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 # =========================
 # Context models

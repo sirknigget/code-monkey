@@ -14,8 +14,9 @@ from code_monkey.graph.default_nodes_provider import DefaultNodesProvider
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.models.model_config import ModelConfig
+from code_monkey.utils.log_utils import get_formatted_logger
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 DEBUG = False
 

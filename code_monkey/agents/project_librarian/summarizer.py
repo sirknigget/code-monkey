@@ -16,8 +16,9 @@ from code_monkey.agents.project_librarian.summarizer_prompts import (
     PROJECT_SUMMARY_TEMPLATE,
 )
 from code_monkey.agents.project_librarian.types import ModuleContext
+from code_monkey.utils.log_utils import get_formatted_logger
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 
 class Summarizer:
@@ -159,7 +160,9 @@ class Summarizer:
         start = time.perf_counter()
         result = self._module_chain.invoke(input_vars).strip()
         elapsed_ms = (time.perf_counter() - start) * 1000
-        logger.debug("Module summarized: %s (%.0f ms)", self._rel(directory), elapsed_ms)
+        logger.debug(
+            "Module summarized: %s (%.0f ms)", self._rel(directory), elapsed_ms
+        )
         return result
 
     def _module_summaries_from_code_context(

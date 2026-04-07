@@ -1,10 +1,14 @@
 import logging
+
 import pytest
 from dotenv import load_dotenv
 
-from code_monkey.agents.web_researcher.tools import google_search_tool, NUM_GOOGLE_RESULTS
+from code_monkey.agents.web_researcher.tools import (
+    NUM_GOOGLE_RESULTS,
+    google_search_tool,
+)
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 load_dotenv(override=True)
 

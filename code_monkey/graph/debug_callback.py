@@ -3,7 +3,9 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 
-logger = logging.getLogger(__name__)
+from code_monkey.utils.log_utils import get_formatted_logger
+
+logger = get_formatted_logger(__name__)
 
 
 class DebugCallbackHandler(BaseCallbackHandler):

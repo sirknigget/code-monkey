@@ -17,8 +17,9 @@ from code_monkey.agents.project_librarian.utils.project_file_hashes import (
 from code_monkey.agents.project_librarian.utils.project_structure import (
     ProjectStructure,
 )
+from code_monkey.utils.log_utils import get_formatted_logger
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 
 class ProjectMapper:

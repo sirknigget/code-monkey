@@ -1,6 +1,6 @@
 import logging
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 
 def print_progress_bar(
@@ -23,7 +23,11 @@ def print_progress_bar(
     bar = "█" * filled + "░" * (width - filled)
 
     # Print progress bar with prefix
-    print(f"\r{prefix} |{bar}| {percent:5.1f}% ({progress}/{progress_max})", end="", flush=True)
+    print(
+        f"\r{prefix} |{bar}| {percent:5.1f}% ({progress}/{progress_max})",
+        end="",
+        flush=True,
+    )
 
     # Print newline when complete
     if progress == progress_max:

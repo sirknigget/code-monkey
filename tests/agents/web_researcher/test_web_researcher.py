@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from code_monkey.agents.web_researcher.web_researcher import WebResearcher
 from code_monkey.models.models import get_minimax_model, get_openai_model
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 load_dotenv(override=True)
 

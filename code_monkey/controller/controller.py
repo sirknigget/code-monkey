@@ -6,8 +6,9 @@ import logging
 
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.ui.protocol import ChatbotUI, Command
+from code_monkey.utils.log_utils import get_formatted_logger
 
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 
 class Controller:

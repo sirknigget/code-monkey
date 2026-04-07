@@ -13,7 +13,7 @@ import pytest
 from code_monkey.utils.log_utils import suppress_noisy_loggers
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
-logger = logging.getLogger(__name__)
+logger = get_formatted_logger(__name__)
 
 suppress_noisy_loggers()
 
