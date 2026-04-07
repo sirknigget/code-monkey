@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
 
+from langchain_core.runnables import RunnableConfig
+
 from code_monkey.graph.state import ChatbotState
 
 
 class NodesProvider(ABC):
     @abstractmethod
-    async def map_project_node(self, state: ChatbotState) -> dict:
+    async def map_project_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         """Analyze and map the project structure."""
 
     @abstractmethod
