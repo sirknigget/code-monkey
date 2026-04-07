@@ -3,6 +3,10 @@ import os
 import sys
 from logging import Logger
 
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
 
 class ColorFormatter(logging.Formatter):
     COLORS = {

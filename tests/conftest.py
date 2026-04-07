@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from code_monkey.utils.log_utils import suppress_noisy_loggers
+from code_monkey.utils.log_utils import get_formatted_logger, suppress_noisy_loggers
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = get_formatted_logger(__name__)
