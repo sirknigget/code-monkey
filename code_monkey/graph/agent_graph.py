@@ -113,6 +113,7 @@ class AgentGraph:
 
     def _run_config(self) -> RunnableConfig:
         config: RunnableConfig = {
+            "recursion_limit": 100,
             "configurable": {
                 "thread_id": self._thread_id,
                 **self._nodes_provider.configurable_fields(),
