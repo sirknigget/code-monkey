@@ -20,6 +20,7 @@ class Command(Enum):
 
     USER_INPUT = "user_input"  # Default for plain text input.
     CLEAR = "clear"
+    MAP = "map"
 
 
 class InputEvent(NamedTuple):

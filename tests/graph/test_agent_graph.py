@@ -103,11 +103,12 @@ async def test_subsequent_invocation_skips_mapping(agent):
 
 
 @pytest.mark.asyncio
-async def test_force_mapping_remaps_after_first_run(agent):
+async def test_trigger_mapping_remaps_after_first_run(agent):
     async for _ in agent.astream("hi"):
         pass
+    await agent.trigger_mapping()
     contents = []
-    async for c in agent.astream("hello", force_mapping=True):
+    async for c in agent.astream("hello"):
         contents.append(c)
     assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
 

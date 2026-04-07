@@ -35,6 +35,11 @@ class Controller:
                 self._ui.system_message("Session cleared.")
                 continue
 
+            if event.command == Command.MAP:
+                await self._graph.trigger_mapping()
+                self._ui.system_message("Project mapping scheduled for next message.")
+                continue
+
             if not event.text.strip():
                 continue
 

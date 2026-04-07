@@ -54,14 +54,16 @@ class AgentGraph:
         """Release resources held by the graph (e.g. Playwright browser)."""
         await self._nodes_provider.teardown()
 
-    async def astream(
-        self, message: str, force_mapping: bool = False
-    ) -> AsyncIterator[str]:
+    async def trigger_mapping(self) -> None:
+        """Update graph state to trigger project re-mapping on the next astream call."""
+        await self._graph.aupdate_state(self._thread_config, {"needs_mapping": True})
+
+    async def astream(self, message: str) -> AsyncIterator[str]:
         """Stream text content of each visible AI message as the graph runs."""
         is_new_session = (
             await self._checkpointer.aget_tuple(self._thread_config) is None
         )
-        state = self._make_state(message, force_mapping, is_new_session)
+        state = self._make_state(message, is_new_session)
         async for update in self._graph.astream(
             state,
             config=self._run_config(),
@@ -95,15 +97,15 @@ class AgentGraph:
     def get_mermaid_diagram(self) -> str:
         return self._graph.get_graph().draw_mermaid()
 
-    def _make_state(
-        self, message: str, force_mapping: bool, is_new_session: bool
-    ) -> ChatbotState:
-        return {
+    def _make_state(self, message: str, is_new_session: bool) -> dict:
+        state: dict = {
             "messages": [HumanMessage(content=message)],
-            "needs_mapping": force_mapping or is_new_session,
             "review_feedback": None,
             "iteration_count": 0,
         }
+        if is_new_session:
+            state["needs_mapping"] = True
+        return state
 
     def _run_config(self) -> RunnableConfig:
         config: RunnableConfig = {

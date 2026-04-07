@@ -115,6 +115,28 @@ async def test_session_persists_across_restart():
 
 
 @pytest.mark.asyncio
+async def test_map_command_shows_scheduled_message():
+    ui = await _run([InputEvent("/map", Command.MAP)])
+    assert ("system", "Project mapping scheduled for next message.") in ui.messages
+
+
+@pytest.mark.asyncio
+async def test_map_then_message_triggers_remapping():
+    ui = await _run(
+        [InputEvent("hello"), InputEvent("/map", Command.MAP), InputEvent("remap me")]
+    )
+    assistant_messages = [
+        content for kind, content in ui.messages if kind == "assistant"
+    ]
+    assert assistant_messages == [
+        "[mock] project mapped",
+        "[mock] orchestrator decision",
+        "[mock] project mapped",
+        "[mock] orchestrator decision",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_clear_then_restart_starts_fresh():
     shared = MemorySaver()
     await _run(
