@@ -141,6 +141,9 @@ class ProjectMapper:
                     None, functools.partial(filepath.read_text, encoding="utf-8")
                 )
             except OSError:
+                logger.warning(
+                    "Cannot read %s, skipping file summarization: %s", filepath, e
+                )
                 return
             file_ctx.summary = await loop.run_in_executor(
                 None, self.summarizer.summarize_file, filepath, code

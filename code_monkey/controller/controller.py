@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.ui.protocol import ChatbotUI, Command
+
+logger = logging.getLogger(__name__)
 
 
 class Controller:
@@ -43,5 +47,9 @@ class Controller:
             if not event.text.strip():
                 continue
 
-            async for content in self._graph.astream(event.text):
-                self._ui.assistant_message(content)
+            try:
+                async for content in self._graph.astream(event.text):
+                    self._ui.assistant_message(content)
+            except Exception as e:
+                logger.exception("Error processing turn")
+                self._ui.show_error(f"Error: {e}")

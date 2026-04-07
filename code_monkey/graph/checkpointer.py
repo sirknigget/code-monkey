@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ class CheckpointerResult:
 
 
 def _delete_db_files(db_path: str) -> None:
+    logging.debug("Deleting checkpoint database files at %s", db_path)
     for path in [db_path, f"{db_path}-shm", f"{db_path}-wal"]:
         try:
             os.remove(path)
@@ -25,14 +27,17 @@ def _delete_db_files(db_path: str) -> None:
 
 async def _open_checkpointer(db_path: str) -> AsyncSqliteSaver:
     conn = await aiosqlite.connect(db_path)
+    logging.debug("Connected to checkpoint database at %s", db_path)
     checkpointer = AsyncSqliteSaver(conn)
     await checkpointer.setup()
+    logging.debug("Checkpoint database setup complete")
     return checkpointer
 
 
 async def make_checkpointer() -> CheckpointerResult:
     db_path = os.environ.get("CODEMONKEY_DB_PATH", DEFAULT_DB_PATH)
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    logging.debug("Using checkpoint database at %s", db_path)
     try:
         return CheckpointerResult(checkpointer=await _open_checkpointer(db_path))
     except sqlite3.DatabaseError as e:

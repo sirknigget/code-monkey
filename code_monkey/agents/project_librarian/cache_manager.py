@@ -9,11 +9,14 @@ Cache structure:
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.types import FileContext, ModuleContext
+
+logger = logging.getLogger(__name__)
 
 # =========================
 # Context models
@@ -34,9 +37,11 @@ def module_context_from_dict(data: dict) -> ModuleContext:
         },
     )
 
+
 # =========================
 # Cache manager
 # =========================
+
 
 class CacheManager:
     """Manages atomic cache reads/writes for project mapping data."""
@@ -105,7 +110,8 @@ class CacheManager:
             with open(context_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return module_context_from_dict(data)
-        except (json.JSONDecodeError, OSError, KeyError):
+        except (json.JSONDecodeError, OSError, KeyError) as e:
+            logger.warning("Code context cache unreadable, will re-summarize: %s", e)
             return None
 
     # -------- project context --------
