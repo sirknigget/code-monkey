@@ -63,7 +63,7 @@ def _make_mock_llm() -> MagicMock:
 
 
 def _make_mapper(working_dir: Path) -> ProjectMapper:
-    return ProjectMapper(working_dir, Summarizer(_make_mock_llm()))
+    return ProjectMapper(working_dir, Summarizer(_make_mock_llm(), working_dir))
 
 
 def _cache(working_dir: Path) -> CacheManager:

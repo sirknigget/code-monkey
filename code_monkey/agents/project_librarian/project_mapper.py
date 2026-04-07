@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
-import logging
 from pathlib import Path
 
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
@@ -32,7 +31,6 @@ class ProjectMapper:
     def __init__(self, working_dir: Path, summarizer: Summarizer) -> None:
         self.working_dir = working_dir
         self.summarizer = summarizer
-        self.summarizer._working_dir = working_dir
         self._cache = CacheManager(working_dir)
 
     def get_code_context(self):
@@ -141,7 +139,7 @@ class ProjectMapper:
                 code = await loop.run_in_executor(
                     None, functools.partial(filepath.read_text, encoding="utf-8")
                 )
-            except OSError:
+            except OSError as e:
                 logger.warning(
                     "Cannot read %s, skipping file summarization: %s", filepath, e
                 )

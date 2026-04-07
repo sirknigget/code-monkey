@@ -1,6 +1,5 @@
 """LLM-based summarizer with LangChain retry."""
 
-import logging
 import time
 from pathlib import Path
 from typing import NamedTuple
@@ -8,7 +7,7 @@ from typing import NamedTuple
 from langchain_core.language_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableSequence
+from langchain_core.runnables import RunnableSerializable
 
 from code_monkey.agents.project_librarian.summarizer_prompts import (
     FILE_SUMMARY_TEMPLATE,
@@ -33,12 +32,12 @@ class Summarizer:
     MAX_PROJECT_SUMMARY_LINES = 1000
     MAX_RETRIES = 3
 
-    def __init__(self, llm: BaseChatModel, working_dir: Path | None = None) -> None:
+    def __init__(self, llm: BaseChatModel, working_dir: Path) -> None:
         """Initialize summarizer with LLM.
 
         Args:
             llm: LangChain BaseChatModel instance.
-            working_dir: Project root used to display relative paths in logs.
+            working_dir: Project root; paths sent to the LLM are relative to this.
         """
         # Attach retry behavior directly to the LLM runnable.
         self.llm = llm.with_retry(stop_after_attempt=self.MAX_RETRIES)
@@ -49,38 +48,36 @@ class Summarizer:
         self._project_chain = self._create_project_summary_chain()
 
     def _rel(self, path: Path) -> Path:
-        if self._working_dir is not None:
-            try:
-                return path.relative_to(self._working_dir)
-            except ValueError:
-                pass
-        return path
+        try:
+            return path.relative_to(self._working_dir)
+        except ValueError:
+            return path
 
-    def _create_file_summary_chain(self) -> RunnableSequence:
+    def _create_file_summary_chain(self) -> RunnableSerializable:
         """Create LangChain chain for file summaries.
 
         Returns:
-            RunnableSequence for file summarization.
+            RunnableSerializable for file summarization.
         """
         template = FILE_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
         return prompt | self.llm | StrOutputParser()
 
-    def _create_module_summary_chain(self) -> RunnableSequence:
+    def _create_module_summary_chain(self) -> RunnableSerializable:
         """Create LangChain chain for module summaries.
 
         Returns:
-            RunnableSequence for module summarization.
+            RunnableSerializable for module summarization.
         """
         template = MODULE_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
         return prompt | self.llm | StrOutputParser()
 
-    def _create_project_summary_chain(self) -> RunnableSequence:
+    def _create_project_summary_chain(self) -> RunnableSerializable:
         """Create LangChain chain for project context.
 
         Returns:
-            RunnableSequence for project context generation.
+            RunnableSerializable for project context generation.
         """
         template = PROJECT_SUMMARY_TEMPLATE
         prompt = ChatPromptTemplate.from_template(template)
@@ -102,7 +99,7 @@ class Summarizer:
         """
         logger.debug("Summarizing file: %s", self._rel(filepath))
         input_vars = {
-            "filepath": str(filepath),
+            "filepath": str(self._rel(filepath)),
             "code": code,
             "max_lines": self.MAX_FILE_SUMMARY_LINES,
         }
@@ -151,7 +148,7 @@ class Summarizer:
             Summarizer._format_file_info(info) for info in submodule_infos
         )
         input_vars = {
-            "module_path": str(directory),
+            "module_path": str(self._rel(directory)),
             "file_summaries": combined_file_summaries,
             "submodule_summaries": combined_submodule_summaries,
             "parent_context": parent_context or "(none)",
@@ -184,7 +181,8 @@ class Summarizer:
             module: ModuleContext,
             path: str,
         ) -> None:
-            summary_parts.append((path, module.summary))
+            if module.summary is not None:
+                summary_parts.append((path, module.summary))
 
             for name, submodule in module.submodules.items():
                 next_path = f"{path}/{name}" if path else name

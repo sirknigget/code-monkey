@@ -29,7 +29,7 @@ from langchain_core.messages import BaseMessage
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
-from code_monkey.models.models import GPT_4O_MINI, get_ollama_model, get_openai_model
+from code_monkey.models.models import GPT_4O_MINI, get_openai_model
 
 dotenv.load_dotenv()
 
@@ -74,7 +74,8 @@ class LLMCallLogger(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        content = messages[0][0].content if messages and messages[0] else ""
+        raw = messages[0][0].content if messages and messages[0] else ""
+        content = raw if isinstance(raw, str) else ""
         if "Summarize this Python module" in content:
             match = re.search(r"^Module:\s*(.+)$", content, re.MULTILINE)
             if match:
@@ -138,8 +139,10 @@ def real_llm_working_dir(mock_project_template_root: Path) -> Path:
 
 def _make_mapper(working_dir: Path) -> tuple[ProjectMapper, LLMCallLogger]:
     call_logger = LLMCallLogger(working_dir)
-    llm = get_openai_model(model = GPT_4O_MINI).with_config(callbacks=[call_logger])
-    return ProjectMapper(working_dir, Summarizer(llm)), call_logger
+    llm = get_openai_model(model=GPT_4O_MINI)
+    llm_with_logging = llm.with_config(callbacks=[call_logger])
+    summarizer = Summarizer(llm_with_logging, working_dir)  # type: ignore[arg-type]
+    return ProjectMapper(working_dir, summarizer), call_logger
 
 
 def _cache(working_dir: Path) -> CacheManager:
@@ -165,11 +168,12 @@ class TestRealLlmInitialMapping:
     Assertions are structural only — content is non-deterministic.
     """
 
-    def test_cache_files_created_with_expected_structure(
+    @pytest.mark.asyncio
+    async def test_cache_files_created_with_expected_structure(
         self, real_llm_working_dir: Path
     ) -> None:
         mapper, call_logger = _make_mapper(real_llm_working_dir)
-        mapper.map_project()
+        await mapper.map_project()
 
         cache = _cache(real_llm_working_dir)
         context = cache.load_code_context()
@@ -228,7 +232,9 @@ class TestRealLlmInitialMapping:
         # Dependency ordering: each file must appear before its containing module,
         # and each child module must appear before its parent module.
         # Parallel calls within the same level may appear in any order.
-        _assert_before(log, "file:output/trading_strategy_implementation.py", "module:output")
+        _assert_before(
+            log, "file:output/trading_strategy_implementation.py", "module:output"
+        )
 
         _assert_before(
             log,
@@ -305,12 +311,13 @@ class TestRealLlmCompositeFileChanges:
     Assertions are structural only — content is non-deterministic.
     """
 
-    def test_modified_added_deleted_files_reflected_in_cache(
+    @pytest.mark.asyncio
+    async def test_modified_added_deleted_files_reflected_in_cache(
         self, real_llm_working_dir: Path
     ) -> None:
         # --- Initial mapping ---
         mapper1, _ = _make_mapper(real_llm_working_dir)
-        mapper1.map_project()
+        await mapper1.map_project()
 
         # --- Apply composite changes ---
         # 1. Modify an existing file
@@ -329,10 +336,11 @@ class TestRealLlmCompositeFileChanges:
 
         # --- Second mapping ---
         mapper2, call_logger = _make_mapper(real_llm_working_dir)
-        mapper2.map_project()
+        await mapper2.map_project()
 
         cache2 = _cache(real_llm_working_dir)
         context2 = cache2.load_code_context()
+        assert context2 is not None
 
         src_module = context2.submodules["src"]
         pkg = src_module.submodules["crewai_trading_strategy"]

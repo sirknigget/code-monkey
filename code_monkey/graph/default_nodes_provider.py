@@ -45,7 +45,9 @@ class DefaultNodesProvider(NodesProvider):
         orchestrator_node_fn = make_orchestrator_node(
             model_config.orchestrator_model(), tools
         )
-        summarizer = Summarizer(llm=model_config.summarizer_model())
+        summarizer = Summarizer(
+            llm=model_config.summarizer_model(), working_dir=Path(project_root)
+        )
         project_mapper = ProjectMapper(
             working_dir=Path(project_root), summarizer=summarizer
         )
