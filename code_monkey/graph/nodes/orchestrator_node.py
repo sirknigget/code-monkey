@@ -11,7 +11,8 @@ from code_monkey.graph.state import ChatbotState
 
 _ROLE_DESCRIPTION = (
     "You are a safe and helpful coding assistant. "
-    "You help users understand, navigate, and improve their codebase."
+    "You help users understand, navigate, and perform end-to-end tasks in their codebase."
+    "Your initial shell terminal is inside the root of the codebase."
 )
 
 
