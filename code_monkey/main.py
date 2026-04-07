@@ -1,5 +1,5 @@
+import argparse
 import asyncio
-import logging
 import os
 import sys
 import traceback
@@ -11,20 +11,15 @@ from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.checkpointer import DEFAULT_THREAD_ID, make_checkpointer
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
-from code_monkey.utils.log_utils import (
-    get_formatted_logger,
-    logging_basic_config,
-    suppress_noisy_loggers,
-)
+from code_monkey.utils.log_utils import get_formatted_logger, suppress_noisy_loggers
 
 load_dotenv(override=True)
 
-# logging_basic_config()
 suppress_noisy_loggers()
 logger = get_formatted_logger(__name__)
 
 
-async def _main() -> None:
+async def _main(project_root: str) -> None:
     ui = SimpleCliChatbotUI()
 
     result = await make_checkpointer()
@@ -35,7 +30,7 @@ async def _main() -> None:
 
     graph = await AgentGraph.create(
         checkpointer=result.checkpointer,
-        project_root=os.getcwd(),
+        project_root=project_root,
         model_config=ModelConfig(),
         thread_id=DEFAULT_THREAD_ID,
     )
@@ -49,8 +44,24 @@ async def _main() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="code-monkey CLI assistant")
+    parser.add_argument(
+        "--path",
+        default=None,
+        help="Project root directory (default: current working directory)",
+    )
+    args = parser.parse_args()
+
+    project_root = args.path if args.path is not None else os.getcwd()
+    if not os.path.isdir(project_root):
+        print(
+            f"Error: --path '{project_root}' is not an existing directory.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     try:
-        asyncio.run(_main())
+        asyncio.run(_main(project_root))
     except SystemExit:
         raise
     except BaseException:

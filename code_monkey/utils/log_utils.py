@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from logging import Logger
 
@@ -23,7 +24,15 @@ LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 LOG_HANDLER.setLevel(logging.DEBUG)
 LOG_HANDLER.setFormatter(ColorFormatter("%(levelname)s: %(name)s: %(message)s"))
 
-LOG_LEVEL = logging.DEBUG
+_log_level_str = os.getenv("LOG_LEVEL", "WARNING").upper()
+_resolved = getattr(logging, _log_level_str, None)
+if not isinstance(_resolved, int):
+    print(
+        f"WARNING: Unrecognized LOG_LEVEL value '{_log_level_str}', defaulting to WARNING.",
+        file=sys.stderr,
+    )
+    _resolved = logging.WARNING
+LOG_LEVEL: int = _resolved
 
 
 def get_formatted_logger(name: str) -> Logger:
