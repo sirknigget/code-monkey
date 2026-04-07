@@ -13,7 +13,9 @@ class NodesProvider(ABC):
         """Analyze and map the project structure."""
 
     @abstractmethod
-    async def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         """Route or coordinate between other nodes."""
 
     @abstractmethod

@@ -18,7 +18,9 @@ class MockNodesProvider(NodesProvider):
             "needs_mapping": False,
         }
 
-    async def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         if self._emit_tool_call and not self._tool_call_emitted:
             self._tool_call_emitted = True
             return {

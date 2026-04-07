@@ -394,3 +394,49 @@ class TestSaveOrder:
         # No files → no file summarizations; empty root still gets module-summarized
         assert summarizer.summarize_file.call_count == 0
         assert summarizer.summarize_module.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# TestGetters
+# ---------------------------------------------------------------------------
+
+
+class TestGetters:
+    """get_code_context and get_project_context delegate to CacheManager."""
+
+    def test_get_project_context_returns_cached_value(self, tmp_path: Path) -> None:
+        summarizer = make_summarizer()
+        with patch(PATCH_CACHE) as mock_cache:
+            mock_cache.return_value.load_project_context.return_value = (
+                "my project summary"
+            )
+            mapper = ProjectMapper(tmp_path, summarizer)
+            result = mapper.get_project_context()
+        assert result == "my project summary"
+
+    def test_get_project_context_returns_none_when_missing(
+        self, tmp_path: Path
+    ) -> None:
+        summarizer = make_summarizer()
+        with patch(PATCH_CACHE) as mock_cache:
+            mock_cache.return_value.load_project_context.return_value = None
+            mapper = ProjectMapper(tmp_path, summarizer)
+            result = mapper.get_project_context()
+        assert result is None
+
+    def test_get_code_context_returns_cached_value(self, tmp_path: Path) -> None:
+        summarizer = make_summarizer()
+        cached = ModuleContext(summary="root", files={}, submodules={})
+        with patch(PATCH_CACHE) as mock_cache:
+            mock_cache.return_value.load_code_context.return_value = cached
+            mapper = ProjectMapper(tmp_path, summarizer)
+            result = mapper.get_code_context()
+        assert result is cached
+
+    def test_get_code_context_returns_none_when_missing(self, tmp_path: Path) -> None:
+        summarizer = make_summarizer()
+        with patch(PATCH_CACHE) as mock_cache:
+            mock_cache.return_value.load_code_context.return_value = None
+            mapper = ProjectMapper(tmp_path, summarizer)
+            result = mapper.get_code_context()
+        assert result is None

@@ -62,8 +62,10 @@ class DefaultNodesProvider(NodesProvider):
     ) -> dict:
         return await map_project_node(state, config)
 
-    async def orchestrator_node(self, state: ChatbotState) -> dict:
-        return await self._orchestrator_node(state)
+    async def orchestrator_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        return await self._orchestrator_node(state, config)
 
     async def tool_node(self, state: ChatbotState) -> dict:
         return await self._tool_node.ainvoke(state)

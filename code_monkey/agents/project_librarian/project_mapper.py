@@ -32,6 +32,15 @@ class ProjectMapper:
         self.working_dir = working_dir
         self.summarizer = summarizer
         self.summarizer._working_dir = working_dir
+        self._cache = CacheManager(working_dir)
+
+    def get_code_context(self):
+        """Return the cached code context, or None if not yet available."""
+        return self._cache.load_code_context()
+
+    def get_project_context(self) -> str | None:
+        """Return the cached project context summary, or None if not yet available."""
+        return self._cache.load_project_context()
 
     async def map_project(self) -> None:
         """Build (or incrementally update) the full project context and persist it.
@@ -42,7 +51,7 @@ class ProjectMapper:
         inconsistent state.
         """
         hashes = ProjectFileHashes(self.working_dir).load()
-        cache = CacheManager(self.working_dir)
+        cache = self._cache
         cached_context = cache.load_code_context()
 
         modified_count = len(hashes.modified_only)
