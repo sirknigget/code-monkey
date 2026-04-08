@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.ui.protocol import ChatbotUI, Command
 from code_monkey.utils.log_utils import get_formatted_logger
@@ -26,12 +25,12 @@ class Controller:
 
     async def run(self) -> None:
         """Run the CLI loop until the user signals exit."""
+        logger.debug("Checking for existing session...")
         if await self._graph.ahas_checkpoint():
             await self._replay_history()
 
         while True:
             try:
-                logger.debug("Waiting for user input...")
                 event = self._ui.get_input("You: ")
             except SystemExit:
                 logger.info("Exit command received. Shutting down.")

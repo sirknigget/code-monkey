@@ -1,4 +1,3 @@
-import logging
 import os
 import sqlite3
 from dataclasses import dataclass, field
@@ -8,7 +7,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from code_monkey.utils.log_utils import get_formatted_logger
 
-DEFAULT_DB_PATH = ".codemonkey/checkpoints.db"
+DEFAULT_DB_PATH = os.path.expanduser("~/.codemonkey/checkpoints.db")
 DEFAULT_THREAD_ID = "session"
 
 logger = get_formatted_logger(__name__)

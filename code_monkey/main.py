@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
-from code_monkey.graph.checkpointer import DEFAULT_THREAD_ID, make_checkpointer
+from code_monkey.graph.checkpointer import make_checkpointer
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
 from code_monkey.utils.log_utils import get_formatted_logger, suppress_noisy_loggers
@@ -32,12 +32,13 @@ async def _main(project_root: str) -> None:
     if result.checkpointer is None:
         return
 
+    thread_id = os.path.abspath(project_root)
     logger.debug("Creating agent graph...")
     graph = await AgentGraph.create(
         checkpointer=result.checkpointer,
         project_root=project_root,
         model_config=ModelConfig(),
-        thread_id=DEFAULT_THREAD_ID,
+        thread_id=thread_id,
     )
     try:
         logger.debug("Running controller...")
