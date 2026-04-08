@@ -36,9 +36,10 @@ uv add <package>
 
 ```bash
 uv run python -m code_monkey.main
+uv run python -m code_monkey.main --path /path/to/project  # explicit project root (default: cwd)
 ```
 
-Conversation state persists across runs via SQLite at `.codemonkey/checkpoints.db`. Type `/clear` in the CLI to reset the session.
+Conversation state persists across runs via SQLite at `.codemonkey/checkpoints.db`. The thread ID is the absolute path of the project root, so each project gets its own conversation history. Type `/clear` in the CLI to reset the session.
 
 ## Architecture
 
@@ -106,9 +107,17 @@ project_context.md   # Full project overview text
 
 File discovery exclusions are governed by `IGNORED_DIRS` in `agents/project_librarian/utils/constants.py` (covers `.git`, `venv`, `__pycache__`, IDE dirs, `.codemonkey`, etc.).
 
+### Orchestrator Tools (`code_monkey/graph/tools/`)
+
+The orchestrator has access to three tool groups:
+
+- `bash_tool.py` — `ShellTool` scoped to the project root, with `ask_human_input=True` (every bash command requires user approval)
+- `file_tools.py` — `ReadFileTool` and `WriteFileTool`, also scoped to the project root
+- `web_researcher_tool.py` — delegates to the Web Researcher agent
+
 ## Models
 
-`code_monkey/models/models.py` provides `get_openai_model()` (default `gpt-4o`) and `get_minimax_model()` (MiniMax via Anthropic-compatible API).
+`code_monkey/models/models.py` provides `get_openai_model()` (default `gpt-4o`) and `get_minimax_model()` (MiniMax via Anthropic-compatible API). `ModelConfig` in `models/model_config.py` assigns models per role: orchestrator → `gpt-4o`, summarizer and web researcher → `gpt-4o-mini`.
 
 ## Testing
 
