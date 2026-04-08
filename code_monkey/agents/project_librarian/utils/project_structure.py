@@ -38,7 +38,7 @@ class ProjectStructure:
         Returns:
             Multi-line string representing the project structure.
         """
-        lines: list[str] = ["./"]
+        lines: list[str] = ["./ (project root)"]
         lines.extend(self._build_tree(self.root, prefix=""))
         return "\n".join(lines)
 

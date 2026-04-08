@@ -37,6 +37,8 @@ Summary:"""
 
 PROJECT_SUMMARY_TEMPLATE = """You are a code analyst. Create a project structure overview with the most important parts.
 
+Project name: {project_name}
+
 Module summaries by directory:
 {module_summaries}
 
@@ -48,6 +50,5 @@ Requirements:
 = If the project is too large, omit less important modules and files, but keep the most critical ones to keep the output under {max_lines} lines.
 
 Project Structure:
-{project_name}
 {project_structure}
 """
