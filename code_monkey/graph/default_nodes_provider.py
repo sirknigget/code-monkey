@@ -10,7 +10,7 @@ from code_monkey.graph.nodes.map_project_node import map_project_node
 from code_monkey.graph.nodes.orchestrator_node import make_orchestrator_node
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
-from code_monkey.graph.tools.bash_tool import bash_tool
+from code_monkey.graph.tools.bash_tool import create_bash_tool
 from code_monkey.graph.tools.file_tools import create_file_tools
 from code_monkey.graph.tools.web_researcher_tool import web_researcher_tool
 from code_monkey.models.model_config import ModelConfig
@@ -39,7 +39,7 @@ class DefaultNodesProvider(NodesProvider):
         tools = [
             web_researcher_tool,
             *create_file_tools(root_dir=project_root),
-            bash_tool,
+            create_bash_tool(root_dir=project_root),
         ]
         tool_node = ToolNode(tools)
         orchestrator_node_fn = make_orchestrator_node(
