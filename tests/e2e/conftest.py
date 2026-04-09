@@ -118,8 +118,7 @@ def web_search_call(query: str, call_id: str = "c1") -> AIMessage:
 class FakeTesterModel(BaseChatModel):
     """Fake model for the Tester subgraph.
 
-    Calls bind_tools() and then invokes the model in a tool-calling loop.
-    Returns a submit_result tool call immediately (no bash calls), with status
+    Returns a plain-text JSON result immediately (no bash calls), with status
     depending on the fail counter.
 
     Args:
@@ -134,24 +133,15 @@ class FakeTesterModel(BaseChatModel):
         self._fails_remaining = self.fails_times
 
     def bind_tools(self, tools, **kwargs):  # type: ignore[override]
-        """Return self — _generate returns a submit_result tool call."""
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         if self._fails_remaining > 0:
             self._fails_remaining -= 1
-            args: dict = {"status": "failed", "reason": "Tests did not pass."}
+            content = '{"status": "failed", "reason": "Tests did not pass."}'
         else:
-            args = {"status": "passed", "reason": ""}
-        msg = AIMessage(
-            content="",
-            tool_calls=[{
-                "name": "submit_result",
-                "args": args,
-                "id": "call_submit",
-                "type": "tool_call",
-            }],
-        )
+            content = '{"status": "passed", "reason": ""}'
+        msg = AIMessage(content=content)
         return ChatResult(generations=[ChatGeneration(message=msg)])
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
@@ -43,19 +45,9 @@ def _make_bash_call_message() -> AIMessage:
     )
 
 
-def _make_submit_result_message(status: str, reason: str = "") -> AIMessage:
-    """Return an AIMessage that calls submit_result (the exit tool)."""
-    return AIMessage(
-        content="",
-        tool_calls=[
-            {
-                "name": "submit_result",
-                "args": {"status": status, "reason": reason},
-                "id": "call_submit",
-                "type": "tool_call",
-            }
-        ],
-    )
+def _make_json_result_message(status: str, reason: str = "") -> AIMessage:
+    """Return an AIMessage with a plain-text JSON result (no tool call)."""
+    return AIMessage(content=json.dumps({"status": status, "reason": reason}))
 
 
 def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
@@ -85,9 +77,9 @@ def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
 class TestTester:
     @pytest.mark.asyncio
     async def test_passes_immediately_no_bash_calls(self) -> None:
-        """Model calls submit_result immediately → passed."""
+        """Model returns JSON result immediately → passed."""
         bash_tool = MockBashTool()
-        model = _make_mock_model([_make_submit_result_message("passed")])
+        model = _make_mock_model([_make_json_result_message("passed")])
 
         tester = Tester(model=model, bash_tool=bash_tool)
         result = await tester.run(project_context=None, chat_summary="", last_messages=[])
@@ -96,11 +88,11 @@ class TestTester:
 
     @pytest.mark.asyncio
     async def test_runs_bash_tool_then_passes(self) -> None:
-        """Model calls bash on first turn, then submit_result(passed)."""
+        """Model calls bash on first turn, then returns JSON result."""
         bash_tool = MockBashTool()
         model = _make_mock_model([
             _make_bash_call_message(),
-            _make_submit_result_message("passed", "All tests green"),
+            _make_json_result_message("passed", "All tests green"),
         ])
 
         tester = Tester(
@@ -116,17 +108,44 @@ class TestTester:
             ],
         )
 
-        assert result.status == "passed"
+        assert result == TesterResult(status="passed", reason="All tests green")
 
     @pytest.mark.asyncio
-    async def test_fails_when_submit_result_is_failed(self) -> None:
-        """Model calls submit_result(failed) → failed result with reason."""
+    async def test_fails_with_reason(self) -> None:
+        """Model returns failed JSON result with reason."""
         bash_tool = MockBashTool()
         model = _make_mock_model([
-            _make_submit_result_message("failed", "Tests failed: 3 errors"),
+            _make_json_result_message("failed", "Tests failed: 3 errors"),
         ])
 
         tester = Tester(model=model, bash_tool=bash_tool)
         result = await tester.run(project_context=None, chat_summary="", last_messages=[])
 
         assert result == TesterResult(status="failed", reason="Tests failed: 3 errors")
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_retries_then_passes(self) -> None:
+        """Model returns invalid JSON first, valid JSON on retry."""
+        bash_tool = MockBashTool()
+        model = _make_mock_model([
+            AIMessage(content="All tests passed!"),  # invalid — plain text, not JSON
+            _make_json_result_message("passed"),
+        ])
+
+        tester = Tester(model=model, bash_tool=bash_tool)
+        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
+
+        assert result == TesterResult(status="passed", reason="")
+
+    @pytest.mark.asyncio
+    async def test_markdown_fenced_json_is_accepted(self) -> None:
+        """Model wraps JSON in markdown code fences — still parsed correctly."""
+        bash_tool = MockBashTool()
+        model = _make_mock_model([
+            AIMessage(content='```json\n{"status": "failed", "reason": "2 failures"}\n```'),
+        ])
+
+        tester = Tester(model=model, bash_tool=bash_tool)
+        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
+
+        assert result == TesterResult(status="failed", reason="2 failures")
