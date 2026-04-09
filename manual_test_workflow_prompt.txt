@@ -1,0 +1,9 @@
+/recipe-task create a workflow for manual sanity testing of codemonkey - as a SKILL.md that you can follow in the future.
+  the testing should be done as an end user - invoke the CLI in a temp project dir and use it for coding. testing scenarios should be:
+  1. starting a new project in an empty dir, making some simple coding requests and asking the agent to verify the results.
+  2. mapping the project, and checking that the agent sees the mapping in its context even after clearing conversation.
+  3. asking the agent to make a change, remapping, and checking that the mapping went right.
+  4. asking the agent to do something that requires a web research, outside of its training knowledge, and verifying the result.
+
+  the testing workflow, once refined, should be documented in a SKILL.md so that the manual testing agent does not need to figure out again how to perform the test - it
+  should contain CLI execution steps + ready prompts + verification steps.
