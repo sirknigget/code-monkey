@@ -419,6 +419,69 @@ async for chunk in self._graph.astream(event.text):
 
 ---
 
+### Task 8 — E2E Tests for Tester Feature
+**Files**: `tests/e2e/conftest.py` (update), `tests/e2e/test_tester.py` (new)
+
+#### Which existing e2e tests stay the same
+
+All existing test files (`test_coding_task.py`, `test_persistence.py`, `test_conversation_history.py`, `test_web_research.py`, `test_bash_tool.py`, `test_mapping.py`) keep their assertions unchanged — the tester runs silently and passes in those scenarios, producing no visible output.
+
+However, **`conftest.py` must be updated** because `ModelConfig` gains two new abstract methods:
+
+```python
+# Add to FakeModelConfig:
+
+def chat_summarizer_model(self) -> BaseChatModel:
+    return FakeChatModel(responses=["Summary."])
+
+def tester_model(self) -> BaseChatModel:
+    return FakeTesterModel(fails_times=self._tester_fails_times)
+```
+
+`FakeModelConfig.__init__` gains `tester_fails_times: int = 0` so tests that need a failing tester can pass it in.
+
+`FakeTesterModel` is a new test double in `conftest.py` that handles both call patterns the `Tester` subgraph makes:
+
+- **`bind_tools()` call** (tester_llm node): returns `AIMessage(content="", tool_calls=[])` — no tool call, skips bash and goes straight to `structured_output_node`.
+- **`with_structured_output(TestOutput)` call** (structured_output_node): returns a `Runnable` that yields `TestOutput(test_result="passed", reason="")` for the first `(total_calls - fails_times)` invocations, and `TestOutput(test_result="failed", reason="Tests did not pass.")` for the first `fails_times` invocations.
+
+The simplest implementation: `FakeTesterModel` tracks a call counter in `_agenerate`. For `with_structured_output`, override it to return a fake `RunnableLambda` that decrements the fail counter and returns the appropriate `TestOutput`.
+
+#### New tests in `tests/e2e/test_tester.py`
+
+```
+# AC: Orchestrator task completion is verified by the tester before the turn ends.
+# AC: When tester fails, orchestrator gets another chance (up to MAX_REVIEW_CYCLES).
+# AC: When MAX_REVIEW_CYCLES is exhausted, a warning surfaces as a system message.
+# @category: e2e
+```
+
+**`test_tester_passes_no_warning`**
+- Tester passes immediately (`tester_fails_times=0`).
+- Assert `ui.assistant_messages()` contains the orchestrator's final response.
+- Assert no entry in `ui.system_messages()` contains "Max review cycles".
+
+**`test_tester_fails_once_then_passes_on_retry`**
+- `FakeModelConfig(orchestrator_responses=["First attempt.", "Second attempt."], tester_fails_times=1)`
+- Tester fails on first tester call → routes back to orchestrator → tester passes on second call.
+- Assert `ui.assistant_messages()` == `["[map_project_node] project mapped", "First attempt.", "Second attempt."]` — both orchestrator responses appear in order.
+- Assert no warning in `ui.system_messages()`.
+
+**`test_tester_fails_max_cycles_emits_warning`**
+- `FakeModelConfig(orchestrator_responses=["Attempt 1.", "Attempt 2.", "Attempt 3."], tester_fails_times=MAX_REVIEW_CYCLES)`
+- Tester fails every call; cycle limit hit.
+- Assert `ui.system_messages()` contains exactly one entry starting with "Max review cycles".
+- Assert the warning does **not** appear in `ui.assistant_messages()`.
+
+**`test_no_tool_call_routes_through_tester_to_end`**
+- Existing `test_no_tool_call_goes_directly_to_end` from `test_web_research.py` already covers this scenario for the old graph. Add a variant here to confirm that after the tester node the turn still ends cleanly (no stray messages).
+- `FakeModelConfig()` (defaults: no tool call, tester passes).
+- Assert `ui.assistant_messages() == ["[map_project_node] project mapped", "Task completed."]`.
+
+**Testable outcome**: All existing e2e tests continue to pass. New tests confirm tester routing, retry behavior, and warning surfacing end-to-end.
+
+---
+
 ## Critical Files
 
 | File | Action |
@@ -440,6 +503,8 @@ async for chunk in self._graph.astream(event.text):
 | `tests/agents/tester/test_tester.py` | **New** — component unit tests |
 | `tests/graph/nodes/test_tester_node.py` | **New** — node wrapper tests |
 | `tests/controller/test_controller.py` | Add warning display test |
+| `tests/e2e/conftest.py` | Add `FakeTesterModel`; update `FakeModelConfig` with `tester_model`, `chat_summarizer_model`, `tester_fails_times` |
+| `tests/e2e/test_tester.py` | **New** — E2E tester routing tests |
 
 ---
 
@@ -449,4 +514,5 @@ async for chunk in self._graph.astream(event.text):
 2. `uv run pytest tests/agents/tester/test_tester.py tests/graph/nodes/test_tester_node.py -v`
 3. `uv run pytest tests/graph/test_agent_graph.py -v`
 4. `uv run pytest tests/controller/test_controller.py -v`
-5. `uv run ruff check . && uv run pyright`
+5. `uv run pytest tests/e2e/ -v`
+6. `uv run ruff check . && uv run pyright`
