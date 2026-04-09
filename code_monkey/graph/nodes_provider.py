@@ -22,6 +22,18 @@ class NodesProvider(ABC):
     async def tool_node(self, state: ChatbotState) -> dict:
         """Execute tool calls from the last AI message."""
 
+    @abstractmethod
+    async def summarizer_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        """Summarize conversation history into a compact context."""
+
+    @abstractmethod
+    async def tester_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        """Verify that the assistant completed the requested task correctly."""
+
     def configurable_fields(self) -> dict:
         """Return extra fields to merge into RunnableConfig.configurable. No-op by default."""
         return {}

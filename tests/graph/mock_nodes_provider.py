@@ -42,3 +42,21 @@ class MockNodesProvider(NodesProvider):
 
     async def tool_node(self, state: ChatbotState) -> dict:
         return {"messages": [AIMessage(content="[mock] tool result")]}
+
+    async def summarizer_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        return {
+            "chat_summary": state.get("chat_summary", ""),
+            "last_messages": state.get("messages", []),
+            "chat_summary_span": state.get("chat_summary_span", 0),
+        }
+
+    async def tester_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        return {
+            "tester_result": {"status": "passed", "reason": ""},
+            "tester_iteration_count": state.get("tester_iteration_count", 0) + 1,
+            "review_feedback": None,
+        }
