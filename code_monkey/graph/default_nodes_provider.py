@@ -2,6 +2,7 @@ from pathlib import Path
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import ToolNode
+from langgraph.types import StreamWriter
 
 from code_monkey.agents.chat_summarizer.chat_summarizer import ChatSummarizer
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
@@ -98,9 +99,9 @@ class DefaultNodesProvider(NodesProvider):
         return await self._summarizer_node(state, config)
 
     async def tester_node(
-        self, state: ChatbotState, config: RunnableConfig
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
-        return await self._tester_node(state, config)
+        return await self._tester_node(state, config, writer=writer)
 
     async def teardown(self) -> None:
         await self._researcher.teardown()

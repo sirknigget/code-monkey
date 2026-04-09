@@ -1,5 +1,6 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
@@ -67,7 +68,7 @@ class MockNodesProvider(NodesProvider):
         }
 
     async def tester_node(
-        self, state: ChatbotState, config: RunnableConfig
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         self._tester_call_count += 1
         new_count = state.get("tester_iteration_count", 0) + 1

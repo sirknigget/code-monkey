@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
 from code_monkey.graph.state import ChatbotState
 
@@ -30,7 +31,7 @@ class NodesProvider(ABC):
 
     @abstractmethod
     async def tester_node(
-        self, state: ChatbotState, config: RunnableConfig
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         """Verify that the assistant completed the requested task correctly."""
 

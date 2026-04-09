@@ -5,6 +5,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
 from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
@@ -74,7 +75,7 @@ class _RealToolNodeProvider(NodesProvider):
         }
 
     async def tester_node(
-        self, state: ChatbotState, config: RunnableConfig
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         return {
             "tester_result": {"status": "passed", "reason": ""},
