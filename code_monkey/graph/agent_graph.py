@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
-from typing import cast
+from dataclasses import dataclass
+from typing import Literal, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -19,6 +20,12 @@ from code_monkey.utils.log_utils import get_formatted_logger
 logger = get_formatted_logger(__name__)
 
 DEBUG = False
+
+
+@dataclass
+class StreamChunk:
+    content: str
+    kind: Literal["assistant", "warning"] = "assistant"
 
 
 def _is_text_ai_message(msg: BaseMessage) -> bool:
@@ -106,6 +113,8 @@ class AgentGraph:
             "messages": [HumanMessage(content=message)],
             "review_feedback": None,
             "iteration_count": 0,
+            "tester_result": None,
+            "tester_iteration_count": 0,
         }
         if is_new_session:
             state["needs_mapping"] = True
