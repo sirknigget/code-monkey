@@ -7,6 +7,7 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 
+from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
 from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
 from code_monkey.graph.nodes_provider import NodesProvider
@@ -78,7 +79,7 @@ class _RealToolNodeProvider(NodesProvider):
         self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         return {
-            "tester_result": {"status": "passed", "reason": ""},
+            "tester_result": TesterResult(status="passed", reason=""),
             "tester_iteration_count": state.get("tester_iteration_count", 0) + 1,
             "review_feedback": None,
         }

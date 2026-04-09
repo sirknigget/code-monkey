@@ -122,6 +122,9 @@ class AgentGraph:
         }
         if is_new_session:
             state["needs_mapping"] = True
+            state["chat_summary"] = ""
+            state["last_messages"] = []
+            state["chat_summary_span"] = 0
         return state
 
     def _run_config(self) -> RunnableConfig:
@@ -167,16 +170,17 @@ class AgentGraph:
         )
         graph.add_edge("tools", "orchestrator_node")
         graph.add_edge("summarizer_node", "tester_node")
-        graph.add_conditional_edges(
-            "tester_node",
-            lambda state: (
-                END
-                if (
-                    (cast(ChatbotState, state)["tester_result"] or {}).get("status") == "passed"
-                    or cast(ChatbotState, state)["tester_iteration_count"] >= MAX_REVIEW_CYCLES
-                )
-                else "orchestrator_node"
-            ),
-        )
+
+        def _route_tester(state: ChatbotState) -> str:
+            result = state["tester_result"]
+            if (
+                result is None
+                or result.status == "passed"
+                or state["tester_iteration_count"] >= MAX_REVIEW_CYCLES
+            ):
+                return END
+            return "orchestrator_node"
+
+        graph.add_conditional_edges("tester_node", _route_tester)
 
         return graph.compile(checkpointer=checkpointer)

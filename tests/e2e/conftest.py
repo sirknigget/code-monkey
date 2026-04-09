@@ -17,11 +17,9 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import RunnableLambda
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import PrivateAttr
 
-from code_monkey.agents.tester.tester import TestOutput
 from code_monkey.graph.checkpointer import CheckpointerResult
 from code_monkey.main import setup
 from code_monkey.models.model_config import ModelConfig
@@ -120,12 +118,12 @@ def web_search_call(query: str, call_id: str = "c1") -> AIMessage:
 class FakeTesterModel(BaseChatModel):
     """Fake model for the Tester subgraph.
 
-    Handles both call patterns:
-    - bind_tools(): returns self (ainvoke returns an empty AIMessage, no tool calls)
-    - with_structured_output(TestOutput): returns a RunnableLambda yielding TestOutput
+    Calls bind_tools() and then invokes the model in a tool-calling loop.
+    Returns a submit_result tool call immediately (no bash calls), with status
+    depending on the fail counter.
 
     Args:
-        fails_times: How many times to return test_result="failed" before passing.
+        fails_times: How many times to return status="failed" before passing.
     """
 
     fails_times: int = 0
@@ -136,27 +134,28 @@ class FakeTesterModel(BaseChatModel):
         self._fails_remaining = self.fails_times
 
     def bind_tools(self, tools, **kwargs):  # type: ignore[override]
-        """Return self — ainvoke returns an AIMessage with no tool calls."""
+        """Return self — _generate returns a submit_result tool call."""
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content="", tool_calls=[]))]
+        if self._fails_remaining > 0:
+            self._fails_remaining -= 1
+            args: dict = {"status": "failed", "reason": "Tests did not pass."}
+        else:
+            args = {"status": "passed", "reason": ""}
+        msg = AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "submit_result",
+                "args": args,
+                "id": "call_submit",
+                "type": "tool_call",
+            }],
         )
+        return ChatResult(generations=[ChatGeneration(message=msg)])
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
         return self._generate(messages, stop, **kwargs)
-
-    def with_structured_output(self, schema, **kwargs):  # type: ignore[override]
-        """Returns a RunnableLambda that yields TestOutput based on fail counter."""
-
-        def get_output(_messages):
-            if self._fails_remaining > 0:
-                self._fails_remaining -= 1
-                return TestOutput(test_result="failed", reason="Tests did not pass.")
-            return TestOutput(test_result="passed", reason="")
-
-        return RunnableLambda(get_output)
 
     @property
     def _llm_type(self) -> str:

@@ -1,5 +1,13 @@
+from typing import NamedTuple
+
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+
+
+class SummarizeResult(NamedTuple):
+    summary: str
+    last_messages: list[BaseMessage]
+    span: int
 
 
 _SYSTEM_PROMPT = (
@@ -33,7 +41,7 @@ class ChatSummarizer:
         messages: list[BaseMessage],
         existing_summary: str,
         chat_summary_span: int,
-    ) -> tuple[str, list[BaseMessage], int]:
+    ) -> SummarizeResult:
         """
         Returns: (updated_summary, last_messages, new_chat_summary_span)
         """
@@ -45,7 +53,7 @@ class ChatSummarizer:
 
         human_indices = [i for i, msg in enumerate(filtered) if isinstance(msg, HumanMessage)]
         if not human_indices:
-            return existing_summary, [], 0
+            return SummarizeResult(summary=existing_summary, last_messages=[], span=0)
 
         last_user_idx = human_indices[-1]
         last_messages: list[BaseMessage] = filtered[last_user_idx:]
@@ -63,9 +71,11 @@ class ChatSummarizer:
                 HumanMessage(content=prompt_text),
             ]
             response = await self._model.ainvoke(llm_messages)
-            raw_content = response.content
-            updated_summary: str = raw_content if isinstance(raw_content, str) else str(raw_content)
+            assert isinstance(response.content, str), (
+                f"Expected str from summarizer model, got {type(response.content)}"
+            )
+            updated_summary = response.content
         else:
             updated_summary = existing_summary
 
-        return updated_summary, last_messages, last_user_idx
+        return SummarizeResult(summary=updated_summary, last_messages=last_messages, span=last_user_idx)

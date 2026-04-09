@@ -11,11 +11,11 @@ def make_summarizer_node(
     summarizer: ChatSummarizer,
 ) -> Callable[[ChatbotState, RunnableConfig], Coroutine[Any, Any, dict]]:
     async def summarizer_node(state: ChatbotState, config: RunnableConfig) -> dict:
-        summary, last_msgs, span = await summarizer.summarize(
+        result = await summarizer.summarize(
             state["messages"],
             state.get("chat_summary", ""),
             state.get("chat_summary_span", 0),
         )
-        return {"chat_summary": summary, "last_messages": last_msgs, "chat_summary_span": span}
+        return {"chat_summary": result.summary, "last_messages": result.last_messages, "chat_summary_span": result.span}
 
     return summarizer_node

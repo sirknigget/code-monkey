@@ -6,9 +6,9 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 from unittest.mock import AsyncMock, MagicMock
 
-from code_monkey.agents.tester.tester import Tester
+from code_monkey.agents.tester.tester import Tester, TesterResult
 from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES, make_tester_node
-from code_monkey.graph.state import ChatbotState, TesterResult
+from code_monkey.graph.state import ChatbotState
 
 
 # ---------------------------------------------------------------------------

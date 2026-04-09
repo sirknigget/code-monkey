@@ -5,10 +5,9 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-from code_monkey.agents.tester.tester import TestOutput, Tester
-from code_monkey.graph.state import TesterResult
+from code_monkey.agents.tester.tester import Tester, TesterResult
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +28,7 @@ class MockBashTool(BaseTool):
         return ""
 
 
-def _make_tool_call_ai_message() -> AIMessage:
+def _make_bash_call_message() -> AIMessage:
     """Return an AIMessage that contains a bash tool call."""
     return AIMessage(
         content="",
@@ -37,45 +36,44 @@ def _make_tool_call_ai_message() -> AIMessage:
             {
                 "name": "bash",
                 "args": {"commands": "pytest"},
-                "id": "call_abc",
+                "id": "call_bash",
                 "type": "tool_call",
             }
         ],
     )
 
 
-def _make_no_tool_call_ai_message() -> AIMessage:
-    """Return an AIMessage with no tool calls."""
-    return AIMessage(content="Done checking.")
+def _make_submit_result_message(status: str, reason: str = "") -> AIMessage:
+    """Return an AIMessage that calls submit_result (the exit tool)."""
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "submit_result",
+                "args": {"status": status, "reason": reason},
+                "id": "call_submit",
+                "type": "tool_call",
+            }
+        ],
+    )
 
 
-def _make_mock_model(
-    bind_tools_responses: list[AIMessage],
-    structured_output_result: TestOutput,
-) -> MagicMock:
+def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
     """
-    Build a mock BaseChatModel where:
-      - bind_tools() returns a sub-mock whose ainvoke() cycles through bind_tools_responses
-      - with_structured_output(TestOutput) returns a runnable whose ainvoke() returns
-        structured_output_result
+    Build a mock BaseChatModel where bind_tools() returns a sub-mock whose
+    ainvoke() cycles through call_responses in order.
     """
     model = MagicMock()
-
     bound = MagicMock()
     call_count = {"n": 0}
 
     async def bound_ainvoke(messages, **kwargs):
         idx = call_count["n"]
         call_count["n"] += 1
-        return bind_tools_responses[idx]
+        return call_responses[idx]
 
     bound.ainvoke = bound_ainvoke
     model.bind_tools.return_value = bound
-
-    structured = MagicMock()
-    structured.ainvoke = AsyncMock(return_value=structured_output_result)
-    model.with_structured_output.return_value = structured
-
     return model
 
 
@@ -86,36 +84,29 @@ def _make_mock_model(
 
 class TestTester:
     @pytest.mark.asyncio
-    async def test_passes_immediately_no_tool_calls(self) -> None:
-        """Model returns no tool call on first invocation → goes straight to structured output."""
+    async def test_passes_immediately_no_bash_calls(self) -> None:
+        """Model calls submit_result immediately → passed."""
         bash_tool = MockBashTool()
-        model = _make_mock_model(
-            bind_tools_responses=[_make_no_tool_call_ai_message()],
-            structured_output_result=TestOutput(test_result="passed", reason=""),
-        )
+        model = _make_mock_model([_make_submit_result_message("passed")])
 
         tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(
-            project_context=None,
-            chat_summary="",
-            last_messages=[],
-        )
+        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
 
         assert result == TesterResult(status="passed", reason="")
 
     @pytest.mark.asyncio
     async def test_runs_bash_tool_then_passes(self) -> None:
-        """Model issues a tool call on first turn, then no tool call → passes."""
+        """Model calls bash on first turn, then submit_result(passed)."""
         bash_tool = MockBashTool()
-        model = _make_mock_model(
-            bind_tools_responses=[
-                _make_tool_call_ai_message(),
-                _make_no_tool_call_ai_message(),
-            ],
-            structured_output_result=TestOutput(test_result="passed", reason="All tests green"),
-        )
+        model = _make_mock_model([
+            _make_bash_call_message(),
+            _make_submit_result_message("passed", "All tests green"),
+        ])
 
-        tester = Tester(model=model, bash_tool=bash_tool)
+        tester = Tester(
+            model=model,
+            bash_tool=bash_tool,
+        )
         result = await tester.run(
             project_context="A Python CLI project.",
             chat_summary="User asked to add a feature.",
@@ -125,24 +116,17 @@ class TestTester:
             ],
         )
 
-        assert result["status"] == "passed"
+        assert result.status == "passed"
 
     @pytest.mark.asyncio
-    async def test_fails_when_structured_output_is_failed(self) -> None:
-        """Model returns no tool call; structured output signals failure."""
+    async def test_fails_when_submit_result_is_failed(self) -> None:
+        """Model calls submit_result(failed) → failed result with reason."""
         bash_tool = MockBashTool()
-        model = _make_mock_model(
-            bind_tools_responses=[_make_no_tool_call_ai_message()],
-            structured_output_result=TestOutput(
-                test_result="failed", reason="Tests failed: 3 errors"
-            ),
-        )
+        model = _make_mock_model([
+            _make_submit_result_message("failed", "Tests failed: 3 errors"),
+        ])
 
         tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(
-            project_context=None,
-            chat_summary="",
-            last_messages=[],
-        )
+        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
 
         assert result == TesterResult(status="failed", reason="Tests failed: 3 errors")

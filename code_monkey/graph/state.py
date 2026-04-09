@@ -1,13 +1,10 @@
 import operator
-from typing import Annotated, Literal
+from typing import Annotated
 
 from langchain_core.messages import BaseMessage
 from typing_extensions import TypedDict
 
-
-class TesterResult(TypedDict):
-    status: Literal["passed", "failed"]
-    reason: str  # empty string when passed
+from code_monkey.agents.tester.tester import TesterResult
 
 
 class ChatbotState(TypedDict):

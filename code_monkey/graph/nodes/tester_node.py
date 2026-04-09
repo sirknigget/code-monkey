@@ -3,8 +3,8 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 
-from code_monkey.agents.tester.tester import Tester
-from code_monkey.graph.state import ChatbotState, TesterResult
+from code_monkey.agents.tester.tester import Tester, TesterResult
+from code_monkey.graph.state import ChatbotState
 
 MAX_REVIEW_CYCLES = 3
 
@@ -21,20 +21,20 @@ def make_tester_node(tester: Tester) -> Any:
             state.get("last_messages", []),
         )
         new_count = state.get("tester_iteration_count", 0) + 1
-        if result["status"] == "failed" and new_count >= MAX_REVIEW_CYCLES:
+        if result.status == "failed" and new_count >= MAX_REVIEW_CYCLES:
             writer(
                 {
                     "kind": "warning",
                     "content": (
                         f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. "
-                        f"Stopping.\nLast failure: {result['reason']}"
+                        f"Stopping.\nLast failure: {result.reason}"
                     ),
                 }
             )
         return {
             "tester_result": result,
             "tester_iteration_count": new_count,
-            "review_feedback": result["reason"] if result["status"] == "failed" else None,
+            "review_feedback": result.reason if result.status == "failed" else None,
         }
 
     return tester_node

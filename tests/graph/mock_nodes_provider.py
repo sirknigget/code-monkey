@@ -2,6 +2,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 
+from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 
@@ -75,18 +76,18 @@ class MockNodesProvider(NodesProvider):
         self._tester_call_count += 1
         new_count = state.get("tester_iteration_count", 0) + 1
         if self._tester_call_count <= self._tester_fails_times:
-            result: dict = {"status": "failed", "reason": "Mock tester failure."}
+            result = TesterResult(status="failed", reason="Mock tester failure.")
         else:
-            result = {"status": "passed", "reason": ""}
-        if result["status"] == "failed" and new_count >= MAX_REVIEW_CYCLES:
+            result = TesterResult(status="passed", reason="")
+        if result.status == "failed" and new_count >= MAX_REVIEW_CYCLES:
             writer(
                 {
                     "kind": "warning",
-                    "content": f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. Stopping.\nLast failure: {result['reason']}",
+                    "content": f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. Stopping.\nLast failure: {result.reason}",
                 }
             )
         return {
             "tester_result": result,
             "tester_iteration_count": new_count,
-            "review_feedback": result["reason"] if result["status"] == "failed" else None,
+            "review_feedback": result.reason if result.status == "failed" else None,
         }
