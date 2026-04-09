@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from unittest.mock import MagicMock
 
 from code_monkey.agents.tester.tester import Tester, TesterResult
 
@@ -18,8 +17,6 @@ from code_monkey.agents.tester.tester import Tester, TesterResult
 
 
 class MockBashTool(BaseTool):
-    """Minimal BaseTool subclass used as a stand-in for the real bash tool."""
-
     name: str = "bash"
     description: str = "Run bash commands"
 
@@ -30,43 +27,14 @@ class MockBashTool(BaseTool):
         return ""
 
 
-def _make_bash_call_message() -> AIMessage:
-    """Return an AIMessage that contains a bash tool call."""
-    return AIMessage(
-        content="",
-        tool_calls=[
-            {
-                "name": "bash",
-                "args": {"commands": "pytest"},
-                "id": "call_bash",
-                "type": "tool_call",
-            }
-        ],
-    )
-
-
-def _make_result_message(status: str, reason: str = "") -> AIMessage:
-    """Return an AIMessage with a structured JSON result (as produced by response_format)."""
-    return AIMessage(content=json.dumps({"status": status, "reason": reason}))
-
-
-def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
-    """
-    Build a mock BaseChatModel where bind_tools() returns a sub-mock whose
-    ainvoke() cycles through call_responses in order.
-    """
+def _make_tester(result: TesterResult) -> Tester:
+    """Build a Tester whose internal agent immediately returns the given result."""
     model = MagicMock()
-    bound = MagicMock()
-    call_count = {"n": 0}
-
-    async def bound_ainvoke(messages, **kwargs):
-        idx = call_count["n"]
-        call_count["n"] += 1
-        return call_responses[idx]
-
-    bound.ainvoke = bound_ainvoke
-    model.bind_tools.return_value = bound
-    return model
+    bash_tool = MockBashTool()
+    tester = Tester(model=model, bash_tool=bash_tool)
+    tester._agent = AsyncMock()
+    tester._agent.ainvoke = AsyncMock(return_value={"structured_response": result})
+    return tester
 
 
 # ---------------------------------------------------------------------------
@@ -76,27 +44,21 @@ def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
 
 class TestTester:
     @pytest.mark.asyncio
-    async def test_passes_immediately_no_bash_calls(self) -> None:
-        """Model returns structured result immediately → passed."""
-        bash_tool = MockBashTool()
-        model = _make_mock_model([_make_result_message("passed")])
-
-        tester = Tester(model=model, bash_tool=bash_tool)
+    async def test_passes_returns_passed_result(self) -> None:
+        tester = _make_tester(TesterResult(status="passed", reason=""))
         result = await tester.run(project_context=None, chat_summary="", last_messages=[])
-
         assert result == TesterResult(status="passed", reason="")
 
     @pytest.mark.asyncio
-    async def test_runs_bash_tool_then_passes(self) -> None:
-        """Model calls bash on first turn, then returns structured result."""
-        bash_tool = MockBashTool()
-        model = _make_mock_model([
-            _make_bash_call_message(),
-            _make_result_message("passed", "All tests green"),
-        ])
+    async def test_fails_returns_failed_result_with_reason(self) -> None:
+        tester = _make_tester(TesterResult(status="failed", reason="3 tests failed"))
+        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
+        assert result == TesterResult(status="failed", reason="3 tests failed")
 
-        tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(
+    @pytest.mark.asyncio
+    async def test_context_included_in_agent_invocation(self) -> None:
+        tester = _make_tester(TesterResult(status="passed", reason=""))
+        await tester.run(
             project_context="A Python CLI project.",
             chat_summary="User asked to add a feature.",
             last_messages=[
@@ -104,16 +66,9 @@ class TestTester:
                 AIMessage(content="Done."),
             ],
         )
-
-        assert result == TesterResult(status="passed", reason="All tests green")
-
-    @pytest.mark.asyncio
-    async def test_fails_with_reason(self) -> None:
-        """Model returns failed result with reason."""
-        bash_tool = MockBashTool()
-        model = _make_mock_model([_make_result_message("failed", "Tests failed: 3 errors")])
-
-        tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
-
-        assert result == TesterResult(status="failed", reason="Tests failed: 3 errors")
+        call_args = tester._agent.ainvoke.call_args
+        message_content = call_args[0][0]["messages"][0].content
+        assert "A Python CLI project." in message_content
+        assert "User asked to add a feature." in message_content
+        assert "User: Add a feature" in message_content
+        assert "Assistant: Done." in message_content

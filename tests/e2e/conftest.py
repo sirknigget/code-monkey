@@ -136,12 +136,17 @@ class FakeTesterModel(BaseChatModel):
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        # create_agent uses ToolStrategy for models without provider structured-output
+        # support, so the fake must call the "TesterResult" structured-output tool.
         if self._fails_remaining > 0:
             self._fails_remaining -= 1
-            content = '{"status": "failed", "reason": "Tests did not pass."}'
+            args: dict = {"status": "failed", "reason": "Tests did not pass."}
         else:
-            content = '{"status": "passed", "reason": ""}'
-        msg = AIMessage(content=content)
+            args = {"status": "passed", "reason": ""}
+        msg = AIMessage(
+            content="",
+            tool_calls=[{"name": "TesterResult", "args": args, "id": "c_tr", "type": "tool_call"}],
+        )
         return ChatResult(generations=[ChatGeneration(message=msg)])
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
