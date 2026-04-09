@@ -3,14 +3,16 @@ import asyncio
 import os
 import sys
 import traceback
+from typing import Protocol
 
 from dotenv import load_dotenv
 
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
-from code_monkey.graph.checkpointer import make_checkpointer
+from code_monkey.graph.checkpointer import CheckpointerResult, make_checkpointer
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
+from code_monkey.ui.protocol import ChatbotUI
 from code_monkey.utils.log_utils import get_formatted_logger, suppress_noisy_loggers
 
 load_dotenv(override=True)
@@ -19,14 +21,22 @@ suppress_noisy_loggers()
 logger = get_formatted_logger(__name__)
 
 
-async def _main(project_root: str) -> None:
+class CheckpointerFactory(Protocol):
+    async def __call__(self) -> CheckpointerResult: ...
+
+
+async def setup(
+    project_root: str,
+    ui: ChatbotUI,
+    checkpointer_factory: CheckpointerFactory,
+    model_config: ModelConfig,
+) -> None:
     logger.info(
         "Starting code-monkey CLI assistant with project root: %s", project_root
     )
-    ui = SimpleCliChatbotUI()
 
     logger.debug("Initializing checkpointer...")
-    result = await make_checkpointer()
+    result = await checkpointer_factory()
     for error in result.errors:
         ui.show_error(error)
     if result.checkpointer is None:
@@ -37,7 +47,7 @@ async def _main(project_root: str) -> None:
     graph = await AgentGraph.create(
         checkpointer=result.checkpointer,
         project_root=project_root,
-        model_config=ModelConfig(),
+        model_config=model_config,
         thread_id=thread_id,
     )
     try:
@@ -71,7 +81,14 @@ def main() -> None:
         raise SystemExit(1)
 
     try:
-        asyncio.run(_main(project_root))
+        asyncio.run(
+            setup(
+                project_root=project_root,
+                ui=SimpleCliChatbotUI(),
+                checkpointer_factory=make_checkpointer,
+                model_config=ModelConfig(),
+            )
+        )
     except SystemExit:
         raise
     except BaseException:
