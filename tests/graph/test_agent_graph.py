@@ -6,7 +6,7 @@ from langgraph.prebuilt import ToolNode
 
 from langchain_core.runnables import RunnableConfig
 
-from code_monkey.graph.agent_graph import AgentGraph
+from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from tests.graph.mock_nodes_provider import MockNodesProvider
@@ -106,20 +106,23 @@ def agent_with_real_tool_node():
 
 @pytest.mark.asyncio
 async def test_first_invocation_maps_project(agent):
-    contents = []
+    chunks = []
     async for c in agent.astream("hi"):
-        contents.append(c)
-    assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
+        chunks.append(c)
+    assert chunks == [
+        StreamChunk(content="[mock] project mapped", kind="assistant"),
+        StreamChunk(content="[mock] orchestrator decision", kind="assistant"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_subsequent_invocation_skips_mapping(agent):
     async for _ in agent.astream("hi"):
         pass
-    contents = []
+    chunks = []
     async for c in agent.astream("hello"):
-        contents.append(c)
-    assert contents == ["[mock] orchestrator decision"]
+        chunks.append(c)
+    assert chunks == [StreamChunk(content="[mock] orchestrator decision", kind="assistant")]
 
 
 @pytest.mark.asyncio
@@ -127,21 +130,24 @@ async def test_trigger_mapping_remaps_after_first_run(agent):
     async for _ in agent.astream("hi"):
         pass
     await agent.trigger_mapping()
-    contents = []
+    chunks = []
     async for c in agent.astream("hello"):
-        contents.append(c)
-    assert contents == ["[mock] project mapped", "[mock] orchestrator decision"]
+        chunks.append(c)
+    assert chunks == [
+        StreamChunk(content="[mock] project mapped", kind="assistant"),
+        StreamChunk(content="[mock] orchestrator decision", kind="assistant"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_tool_routing_yields_tool_result_then_orchestrator(agent_with_tool_call):
-    contents = []
+    chunks = []
     async for c in agent_with_tool_call.astream("hi"):
-        contents.append(c)
-    assert contents == [
-        "[mock] project mapped",
-        "[mock] tool result",
-        "[mock] orchestrator decision",
+        chunks.append(c)
+    assert chunks == [
+        StreamChunk(content="[mock] project mapped", kind="assistant"),
+        StreamChunk(content="[mock] tool result", kind="assistant"),
+        StreamChunk(content="[mock] orchestrator decision", kind="assistant"),
     ]
 
 
@@ -149,10 +155,10 @@ async def test_tool_routing_yields_tool_result_then_orchestrator(agent_with_tool
 async def test_tool_routing_subsequent_invocation_skips_tool_call(agent_with_tool_call):
     async for _ in agent_with_tool_call.astream("hi"):
         pass
-    contents = []
+    chunks = []
     async for c in agent_with_tool_call.astream("hello"):
-        contents.append(c)
-    assert contents == ["[mock] orchestrator decision"]
+        chunks.append(c)
+    assert chunks == [StreamChunk(content="[mock] orchestrator decision", kind="assistant")]
 
 
 def test_mermaid_diagram_contains_all_nodes(agent):
@@ -160,6 +166,8 @@ def test_mermaid_diagram_contains_all_nodes(agent):
     assert "map_project_node" in diagram
     assert "orchestrator_node" in diagram
     assert "tools" in diagram
+    assert "summarizer_node" in diagram
+    assert "tester_node" in diagram
 
 
 # ---------------------------------------------------------------------------
@@ -231,15 +239,18 @@ async def test_get_history_omits_tool_call_messages(agent_with_tool_call):
 async def test_tool_node_executes_mock_tool_and_returns_result(
     agent_with_real_tool_node,
 ):
-    contents = []
+    chunks = []
     async for c in agent_with_real_tool_node.astream("search for something"):
-        contents.append(c)
-    assert contents == ["[mock] project mapped", "final answer"]
+        chunks.append(c)
+    assert chunks == [
+        StreamChunk(content="[mock] project mapped", kind="assistant"),
+        StreamChunk(content="final answer", kind="assistant"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_tool_node_result_feeds_back_to_orchestrator(agent_with_real_tool_node):
-    contents = []
+    chunks = []
     async for c in agent_with_real_tool_node.astream("search for something"):
-        contents.append(c)
-    assert contents[-1] == "final answer"
+        chunks.append(c)
+    assert chunks[-1] == StreamChunk(content="final answer", kind="assistant")

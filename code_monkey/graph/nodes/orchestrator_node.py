@@ -16,11 +16,14 @@ _ROLE_DESCRIPTION = (
 )
 
 
-def build_system_prompt(project_context: str | None) -> str:
-    """Build the system prompt from role description and optional project context."""
+def build_system_prompt(project_context: str | None, review_feedback: str | None = None) -> str:
+    """Build the system prompt from role description, optional project context, and review feedback."""
+    prompt = _ROLE_DESCRIPTION
     if project_context:
-        return f"{_ROLE_DESCRIPTION}\n\n## Project Context\n\n{project_context}"
-    return _ROLE_DESCRIPTION
+        prompt += f"\n\n## Project Context\n\n{project_context}"
+    if review_feedback:
+        prompt += f"\n\n## Previous Attempt Failed\n\n{review_feedback}"
+    return prompt
 
 
 def make_orchestrator_node(
@@ -38,7 +41,8 @@ def make_orchestrator_node(
         project_context = (
             project_mapper.get_project_context() if project_mapper else None
         )
-        system_prompt = build_system_prompt(project_context)
+        review_feedback = state.get("review_feedback")
+        system_prompt = build_system_prompt(project_context, review_feedback)
         messages = [SystemMessage(content=system_prompt), *state["messages"]]
         response = await bound_model.ainvoke(messages)
         return {"messages": [response]}
