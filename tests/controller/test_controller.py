@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
@@ -42,7 +43,7 @@ class _MockNodesProvider(NodesProvider):
         }
 
     async def tester_node(
-        self, state: ChatbotState, config: RunnableConfig
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         return {
             "tester_result": {"status": "passed", "reason": ""},

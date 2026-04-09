@@ -308,6 +308,9 @@ async def test_tester_fails_max_cycles_graph_terminates():
     assert checkpoint is not None
     tester_iteration_count = checkpoint["channel_values"].get("tester_iteration_count", 0)
     assert tester_iteration_count >= MAX_REVIEW_CYCLES
+    warning_chunks = [c for c in chunks if c.kind == "warning"]
+    assert len(warning_chunks) == 1
+    assert warning_chunks[0].content.startswith("Max review cycles")
 
 
 @pytest.mark.asyncio
