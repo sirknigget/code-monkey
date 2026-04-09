@@ -1,4 +1,4 @@
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from code_monkey.graph.nodes_provider import NodesProvider
@@ -6,9 +6,18 @@ from code_monkey.graph.state import ChatbotState
 
 
 class MockNodesProvider(NodesProvider):
-    def __init__(self, emit_tool_call: bool = False) -> None:
+    def __init__(
+        self,
+        emit_tool_call: bool = False,
+        orchestrator_responses: list[str] | None = None,
+        tester_fails_times: int = 0,
+    ) -> None:
         self._emit_tool_call = emit_tool_call
         self._tool_call_emitted = False
+        self._orchestrator_responses = orchestrator_responses or []
+        self._orchestrator_call_count = 0
+        self._tester_call_count = 0
+        self._tester_fails_times = tester_fails_times
 
     async def map_project_node(
         self, state: ChatbotState, config: RunnableConfig
@@ -38,6 +47,11 @@ class MockNodesProvider(NodesProvider):
                     )
                 ]
             }
+        if self._orchestrator_responses:
+            idx = min(self._orchestrator_call_count, len(self._orchestrator_responses) - 1)
+            response = self._orchestrator_responses[idx]
+            self._orchestrator_call_count += 1
+            return {"messages": [AIMessage(content=response)]}
         return {"messages": [AIMessage(content="[mock] orchestrator decision")]}
 
     async def tool_node(self, state: ChatbotState) -> dict:
@@ -48,15 +62,21 @@ class MockNodesProvider(NodesProvider):
     ) -> dict:
         return {
             "chat_summary": state.get("chat_summary", ""),
-            "last_messages": state.get("messages", []),
+            "last_messages": [m for m in state.get("messages", []) if isinstance(m, HumanMessage)],
             "chat_summary_span": state.get("chat_summary_span", 0),
         }
 
     async def tester_node(
         self, state: ChatbotState, config: RunnableConfig
     ) -> dict:
+        self._tester_call_count += 1
+        new_count = state.get("tester_iteration_count", 0) + 1
+        if self._tester_call_count <= self._tester_fails_times:
+            result = {"status": "failed", "reason": "Mock tester failure."}
+        else:
+            result = {"status": "passed", "reason": ""}
         return {
-            "tester_result": {"status": "passed", "reason": ""},
-            "tester_iteration_count": state.get("tester_iteration_count", 0) + 1,
-            "review_feedback": None,
+            "tester_result": result,
+            "tester_iteration_count": new_count,
+            "review_feedback": result["reason"] if result["status"] == "failed" else None,
         }

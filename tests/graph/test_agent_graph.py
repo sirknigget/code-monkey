@@ -7,6 +7,7 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.runnables import RunnableConfig
 
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
+from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from tests.graph.mock_nodes_provider import MockNodesProvider
@@ -254,3 +255,70 @@ async def test_tool_node_result_feeds_back_to_orchestrator(agent_with_real_tool_
     async for c in agent_with_real_tool_node.astream("search for something"):
         chunks.append(c)
     assert chunks[-1] == StreamChunk(content="final answer", kind="assistant")
+
+
+# ---------------------------------------------------------------------------
+# Tester routing integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_finishes_routes_through_tester_to_end():
+    agent = AgentGraph(MockNodesProvider(tester_fails_times=0), checkpointer=MemorySaver())
+    chunks = []
+    async for c in agent.astream("hello"):
+        chunks.append(c)
+    assistant_chunks = [c for c in chunks if c.kind == "assistant"]
+    warning_chunks = [c for c in chunks if c.kind == "warning"]
+    assert any(c.content == "[mock] orchestrator decision" for c in assistant_chunks)
+    assert warning_chunks == []
+
+
+@pytest.mark.asyncio
+async def test_tester_fails_once_routes_back_to_orchestrator():
+    agent = AgentGraph(
+        MockNodesProvider(
+            tester_fails_times=1,
+            orchestrator_responses=["First attempt.", "Second attempt."],
+        ),
+        checkpointer=MemorySaver(),
+    )
+    chunks = []
+    async for c in agent.astream("hello"):
+        chunks.append(c)
+    assistant_chunks = [c for c in chunks if c.kind == "assistant"]
+    warning_chunks = [c for c in chunks if c.kind == "warning"]
+    contents = [c.content for c in assistant_chunks]
+    assert "First attempt." in contents
+    assert "Second attempt." in contents
+    assert warning_chunks == []
+
+
+@pytest.mark.asyncio
+async def test_tester_fails_max_cycles_graph_terminates():
+    agent = AgentGraph(
+        MockNodesProvider(tester_fails_times=MAX_REVIEW_CYCLES),
+        checkpointer=MemorySaver(),
+    )
+    chunks = []
+    async for c in agent.astream("hello"):
+        chunks.append(c)
+    checkpoint = await agent._checkpointer.aget(agent._thread_config)
+    assert checkpoint is not None
+    tester_iteration_count = checkpoint["channel_values"].get("tester_iteration_count", 0)
+    assert tester_iteration_count >= MAX_REVIEW_CYCLES
+
+
+@pytest.mark.asyncio
+async def test_tool_call_path_tester_runs_after_final_orchestrator_response():
+    agent = AgentGraph(
+        MockNodesProvider(emit_tool_call=True, tester_fails_times=0),
+        checkpointer=MemorySaver(),
+    )
+    chunks = []
+    async for c in agent.astream("hello"):
+        chunks.append(c)
+    assistant_contents = [c.content for c in chunks if c.kind == "assistant"]
+    assert "[mock] project mapped" in assistant_contents
+    assert "[mock] tool result" in assistant_contents
+    assert "[mock] orchestrator decision" in assistant_contents
