@@ -1,5 +1,4 @@
 import operator
-import re
 from typing import Annotated, Literal
 
 from langchain_core.language_models import BaseChatModel
@@ -7,7 +6,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import BaseTool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 
@@ -18,20 +17,7 @@ class TesterResult(BaseModel):
 
 TESTER_SYSTEM_PROMPT = """You are a software tester verifying that the assistant completed the requested task correctly.
 
-Your job:
-1. Run bash commands to verify the work (run tests, check files, etc.)
-2. When done, respond with ONLY a JSON object — no additional text, no markdown:
-   {"status": "passed", "reason": ""} if all tests pass
-   {"status": "failed", "reason": "concise explanation"} if tests fail"""
-
-
-def _extract_json(content: str) -> str:
-    """Strip markdown code fences if present."""
-    content = content.strip()
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
-    if match:
-        return match.group(1).strip()
-    return content
+Run bash commands to verify the work (run tests, check files, etc.), then return your verdict."""
 
 
 class TesterState(TypedDict):
@@ -73,48 +59,30 @@ class Tester:
         return final_state["test_output"]
 
     def _build_subgraph(self, model: BaseChatModel, bash_tool: BaseTool):
-        bound_model = model.bind_tools([bash_tool])
+        bound_model = model.bind_tools([bash_tool], response_format=TesterResult)
 
         async def tester_llm(state: TesterState) -> dict:
             response = await bound_model.ainvoke(state["messages"])
             return {"messages": [response]}
 
-        async def validate_result(state: TesterState) -> dict:
+        async def extract_result(state: TesterState) -> dict:
             last = state["messages"][-1]
-            if isinstance(last, AIMessage) and last.content:
-                try:
-                    result = TesterResult.model_validate_json(_extract_json(str(last.content)))
-                    return {"test_output": result}
-                except (ValidationError, ValueError):
-                    pass
-            return {
-                "messages": [
-                    HumanMessage(
-                        content=(
-                            "Your response could not be parsed. Respond with ONLY a JSON object: "
-                            '{"status": "passed", "reason": ""} or {"status": "failed", "reason": "explanation"}'
-                        )
-                    )
-                ]
-            }
+            return {"test_output": TesterResult.model_validate_json(str(last.content))}
 
         def should_continue(state: TesterState) -> str:
             last = state["messages"][-1]
             if isinstance(last, AIMessage) and last.tool_calls:
                 return "tester_tools"
-            return "validate_result"
-
-        def after_validate(state: TesterState) -> str:
-            return END if state["test_output"] is not None else "tester_llm"
+            return "extract_result"
 
         graph = StateGraph(TesterState)
         graph.add_node("tester_llm", tester_llm)
         graph.add_node("tester_tools", ToolNode([bash_tool]))
-        graph.add_node("validate_result", validate_result)
+        graph.add_node("extract_result", extract_result)
 
         graph.set_entry_point("tester_llm")
         graph.add_conditional_edges("tester_llm", should_continue)
         graph.add_edge("tester_tools", "tester_llm")
-        graph.add_conditional_edges("validate_result", after_validate)
+        graph.add_edge("extract_result", END)
 
         return graph.compile()

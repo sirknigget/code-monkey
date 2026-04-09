@@ -45,8 +45,8 @@ def _make_bash_call_message() -> AIMessage:
     )
 
 
-def _make_json_result_message(status: str, reason: str = "") -> AIMessage:
-    """Return an AIMessage with a plain-text JSON result (no tool call)."""
+def _make_result_message(status: str, reason: str = "") -> AIMessage:
+    """Return an AIMessage with a structured JSON result (as produced by response_format)."""
     return AIMessage(content=json.dumps({"status": status, "reason": reason}))
 
 
@@ -77,9 +77,9 @@ def _make_mock_model(call_responses: list[AIMessage]) -> MagicMock:
 class TestTester:
     @pytest.mark.asyncio
     async def test_passes_immediately_no_bash_calls(self) -> None:
-        """Model returns JSON result immediately → passed."""
+        """Model returns structured result immediately → passed."""
         bash_tool = MockBashTool()
-        model = _make_mock_model([_make_json_result_message("passed")])
+        model = _make_mock_model([_make_result_message("passed")])
 
         tester = Tester(model=model, bash_tool=bash_tool)
         result = await tester.run(project_context=None, chat_summary="", last_messages=[])
@@ -88,17 +88,14 @@ class TestTester:
 
     @pytest.mark.asyncio
     async def test_runs_bash_tool_then_passes(self) -> None:
-        """Model calls bash on first turn, then returns JSON result."""
+        """Model calls bash on first turn, then returns structured result."""
         bash_tool = MockBashTool()
         model = _make_mock_model([
             _make_bash_call_message(),
-            _make_json_result_message("passed", "All tests green"),
+            _make_result_message("passed", "All tests green"),
         ])
 
-        tester = Tester(
-            model=model,
-            bash_tool=bash_tool,
-        )
+        tester = Tester(model=model, bash_tool=bash_tool)
         result = await tester.run(
             project_context="A Python CLI project.",
             chat_summary="User asked to add a feature.",
@@ -112,40 +109,11 @@ class TestTester:
 
     @pytest.mark.asyncio
     async def test_fails_with_reason(self) -> None:
-        """Model returns failed JSON result with reason."""
+        """Model returns failed result with reason."""
         bash_tool = MockBashTool()
-        model = _make_mock_model([
-            _make_json_result_message("failed", "Tests failed: 3 errors"),
-        ])
+        model = _make_mock_model([_make_result_message("failed", "Tests failed: 3 errors")])
 
         tester = Tester(model=model, bash_tool=bash_tool)
         result = await tester.run(project_context=None, chat_summary="", last_messages=[])
 
         assert result == TesterResult(status="failed", reason="Tests failed: 3 errors")
-
-    @pytest.mark.asyncio
-    async def test_invalid_json_retries_then_passes(self) -> None:
-        """Model returns invalid JSON first, valid JSON on retry."""
-        bash_tool = MockBashTool()
-        model = _make_mock_model([
-            AIMessage(content="All tests passed!"),  # invalid — plain text, not JSON
-            _make_json_result_message("passed"),
-        ])
-
-        tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
-
-        assert result == TesterResult(status="passed", reason="")
-
-    @pytest.mark.asyncio
-    async def test_markdown_fenced_json_is_accepted(self) -> None:
-        """Model wraps JSON in markdown code fences — still parsed correctly."""
-        bash_tool = MockBashTool()
-        model = _make_mock_model([
-            AIMessage(content='```json\n{"status": "failed", "reason": "2 failures"}\n```'),
-        ])
-
-        tester = Tester(model=model, bash_tool=bash_tool)
-        result = await tester.run(project_context=None, chat_summary="", last_messages=[])
-
-        assert result == TesterResult(status="failed", reason="2 failures")
