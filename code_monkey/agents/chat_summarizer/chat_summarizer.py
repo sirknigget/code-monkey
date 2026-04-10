@@ -20,8 +20,7 @@ _SYSTEM_PROMPT = (
 
 def _format_message(msg: BaseMessage) -> str:
     role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-    content = msg.content
-    return f"{role}: {content if isinstance(content, str) else str(content)}"
+    return f"{role}: {msg.content}"
 
 
 def _is_plain_ai_message(msg: BaseMessage) -> bool:
@@ -42,8 +41,11 @@ class ChatSummarizer:
         existing_summary: str,
         chat_summary_span: int,
     ) -> SummarizeResult:
-        """
-        Returns: (updated_summary, last_messages, new_chat_summary_span)
+        """Summarize older filtered history while keeping the latest user turn intact.
+
+        Human messages and plain-text assistant replies are eligible for summarization.
+        Messages from the latest user turn onward remain in ``last_messages`` so the
+        orchestrator and tester can still see the recent transcript directly.
         """
         filtered: list[BaseMessage] = [
             msg
