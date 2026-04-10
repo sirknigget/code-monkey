@@ -15,7 +15,7 @@ def make_summarizer_node(
 ) -> Callable[[ChatbotState, RunnableConfig], Coroutine[Any, Any, dict]]:
     async def summarizer_node(state: ChatbotState, config: RunnableConfig) -> dict:
         logger.debug(
-            "Summarizer node: summarizing %s messages (span=%s)",
+            "Summarizing %s messages (span=%s)",
             len(state["messages"]),
             state.get("chat_summary_span", 0),
         )
@@ -25,7 +25,7 @@ def make_summarizer_node(
             state.get("chat_summary_span", 0),
         )
         logger.debug(
-            "Summarizer node: updated span=%s, last_messages=%s",
+            "Updated summary span=%s with %s last messages",
             result.span,
             len(result.last_messages),
         )
