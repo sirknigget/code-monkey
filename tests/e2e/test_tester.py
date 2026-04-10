@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from code_monkey.graph.agent_graph import MAX_REVIEW_CYCLES
+from code_monkey.graph.review_policy import MAX_REVIEW_CYCLES
 from code_monkey.ui.protocol import InputEvent
 from tests.e2e.conftest import FakeModelConfig, run_session
 

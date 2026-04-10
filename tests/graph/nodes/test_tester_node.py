@@ -29,6 +29,8 @@ def _make_state(
         last_messages=last_messages or [],
         chat_summary_span=0,
         tester_result=None,
+        tester_iteration_count=0,
+        retry_review=False,
     )
 
 

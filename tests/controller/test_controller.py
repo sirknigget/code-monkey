@@ -12,12 +12,16 @@ from langgraph.types import StreamWriter
 from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
+from code_monkey.graph.nodes.review_router_node import make_review_router_node
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.ui.protocol import Command, InputEvent
 
 
 class _MockNodesProvider(NodesProvider):
+    def __init__(self) -> None:
+        self._review_router_node = make_review_router_node()
+
     async def map_project_node(
         self, state: ChatbotState, config: RunnableConfig
     ) -> dict:
@@ -50,6 +54,11 @@ class _MockNodesProvider(NodesProvider):
             "tester_result": TesterResult(status="passed", reason=""),
             "review_feedback": None,
         }
+
+    async def review_router_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        return await self._review_router_node(state, config, writer=writer)
 
 
 class _MockUI:

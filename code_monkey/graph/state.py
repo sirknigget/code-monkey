@@ -42,3 +42,7 @@ class ChatbotState(TypedDict):
     # Number of orchestrator→tester cycles completed in the current user turn.
     # Reset to 0 each turn.
     tester_iteration_count: int
+
+    # Whether the graph should route back to the orchestrator after review routing.
+    # Set by review_router_node and reset each turn.
+    retry_review: bool

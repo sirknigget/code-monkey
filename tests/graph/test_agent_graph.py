@@ -9,8 +9,9 @@ from langgraph.types import StreamWriter
 
 from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
-from code_monkey.graph.agent_graph import MAX_REVIEW_CYCLES
+from code_monkey.graph.nodes.review_router_node import make_review_router_node
 from code_monkey.graph.nodes_provider import NodesProvider
+from code_monkey.graph.review_policy import MAX_REVIEW_CYCLES
 from code_monkey.graph.state import ChatbotState
 from tests.graph.mock_nodes_provider import MockNodesProvider
 
@@ -32,6 +33,7 @@ class _RealToolNodeProvider(NodesProvider):
     def __init__(self) -> None:
         self._tool_node = ToolNode([_mock_search])
         self._tool_call_emitted = False
+        self._review_router_node = make_review_router_node()
 
     async def map_project_node(
         self, state: ChatbotState, config: RunnableConfig
@@ -82,6 +84,11 @@ class _RealToolNodeProvider(NodesProvider):
             "tester_result": TesterResult(status="passed", reason=""),
             "review_feedback": None,
         }
+
+    async def review_router_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        return await self._review_router_node(state, config, writer=writer)
 
 
 @pytest.fixture

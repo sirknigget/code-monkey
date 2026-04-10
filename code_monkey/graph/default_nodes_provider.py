@@ -11,6 +11,7 @@ from code_monkey.agents.tester.tester import Tester
 from code_monkey.agents.web_researcher.web_researcher import WebResearcher
 from code_monkey.graph.nodes.map_project_node import map_project_node
 from code_monkey.graph.nodes.orchestrator_node import make_orchestrator_node
+from code_monkey.graph.nodes.review_router_node import make_review_router_node
 from code_monkey.graph.nodes.summarizer_node import make_summarizer_node
 from code_monkey.graph.nodes.tester_node import make_tester_node
 from code_monkey.graph.nodes_provider import NodesProvider
@@ -30,6 +31,7 @@ class DefaultNodesProvider(NodesProvider):
         project_mapper: ProjectMapper,
         summarizer_node_fn,
         tester_node_fn,
+        review_router_node_fn,
     ) -> None:
         self._tool_node = tool_node
         self._orchestrator_node = orchestrator_node_fn
@@ -37,6 +39,7 @@ class DefaultNodesProvider(NodesProvider):
         self._project_mapper = project_mapper
         self._summarizer_node = summarizer_node_fn
         self._tester_node = tester_node_fn
+        self._review_router_node = review_router_node_fn
 
     @classmethod
     async def create(
@@ -65,6 +68,7 @@ class DefaultNodesProvider(NodesProvider):
         tester = Tester(model_config.tester_model(), tester_bash_tool)
         summarizer_node_fn = make_summarizer_node(chat_summarizer)
         tester_node_fn = make_tester_node(tester)
+        review_router_node_fn = make_review_router_node()
         return cls(
             tool_node,
             orchestrator_node_fn,
@@ -72,6 +76,7 @@ class DefaultNodesProvider(NodesProvider):
             project_mapper,
             summarizer_node_fn,
             tester_node_fn,
+            review_router_node_fn,
         )
 
     def configurable_fields(self) -> dict:
@@ -102,6 +107,11 @@ class DefaultNodesProvider(NodesProvider):
         self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
         return await self._tester_node(state, config, writer=writer)
+
+    async def review_router_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        return await self._review_router_node(state, config, writer=writer)
 
     async def teardown(self) -> None:
         await self._researcher.teardown()

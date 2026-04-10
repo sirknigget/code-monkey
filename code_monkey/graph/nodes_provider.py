@@ -35,6 +35,12 @@ class NodesProvider(ABC):
     ) -> dict:
         """Verify that the assistant completed the requested task correctly."""
 
+    @abstractmethod
+    async def review_router_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        """Update review-routing state after tester_node runs."""
+
     def configurable_fields(self) -> dict:
         """Return extra fields to merge into RunnableConfig.configurable. No-op by default."""
         return {}
