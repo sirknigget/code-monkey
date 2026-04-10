@@ -30,7 +30,9 @@ async def test_tester_passes_no_warning(project_dir: Path, db_path: Path) -> Non
         "[map_project_node] project mapped",
         "Task completed.",
     ]
-    warning_msgs = [m for m in ui.system_messages() if m.startswith("Max review cycles")]
+    warning_msgs = [
+        m for m in ui.system_messages() if m.startswith("Max review cycles")
+    ]
     assert warning_msgs == []
 
 
@@ -55,7 +57,9 @@ async def test_tester_fails_once_then_passes_on_retry(
         "First attempt.",
         "Second attempt.",
     ]
-    warning_msgs = [m for m in ui.system_messages() if m.startswith("Max review cycles")]
+    warning_msgs = [
+        m for m in ui.system_messages() if m.startswith("Max review cycles")
+    ]
     assert warning_msgs == []
 
 

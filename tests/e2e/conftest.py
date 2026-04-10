@@ -3,12 +3,13 @@
 All e2e tests call setup() from main.py with:
   - MockUI: captures all UI calls and provides finite inputs
   - A SQLite checkpointer factory pointed at tmp_path (avoids ~/.codemonkey)
-  - FakeModelConfig: returns deterministic fake LLMs that emit real tool calls
+  - FakeModelConfig: returns deterministic fake LLMs for orchestrator/tester roles
 
 DefaultNodesProvider runs as-is (including Playwright). Only the LLMs are faked;
-the tool calls they emit are executed by the real ToolNode against the real filesystem.
+orchestrator tool calls are still executed by the real ToolNode against the real filesystem.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,6 @@ from code_monkey.graph.checkpointer import CheckpointerResult
 from code_monkey.main import setup
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.protocol import InputEvent
-
 
 # ---------------------------------------------------------------------------
 # Fake LLM
@@ -118,8 +118,8 @@ def web_search_call(query: str, call_id: str = "c1") -> AIMessage:
 class FakeTesterModel(BaseChatModel):
     """Fake model for the Tester subgraph.
 
-    Returns a plain-text JSON result immediately (no bash calls), with status
-    depending on the fail counter.
+    Returns a provider-native JSON result immediately (no bash calls), with
+    status depending on the fail counter.
 
     Args:
         fails_times: How many times to return status="failed" before passing.
@@ -129,24 +129,20 @@ class FakeTesterModel(BaseChatModel):
     _fails_remaining: int = PrivateAttr(default=0)
 
     def __init__(self, **data: Any) -> None:
+        data.setdefault("profile", {"structured_output": True})
         super().__init__(**data)
         self._fails_remaining = self.fails_times
 
     def bind_tools(self, tools, **kwargs):  # type: ignore[override]
-        return self
+        return self.bind(tools=tools, **kwargs)
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        # create_agent uses ToolStrategy for models without provider structured-output
-        # support, so the fake must call the "TesterResult" structured-output tool.
         if self._fails_remaining > 0:
             self._fails_remaining -= 1
-            args: dict = {"status": "failed", "reason": "Tests did not pass."}
+            payload = {"status": "failed", "reason": "Tests did not pass."}
         else:
-            args = {"status": "passed", "reason": ""}
-        msg = AIMessage(
-            content="",
-            tool_calls=[{"name": "TesterResult", "args": args, "id": "c_tr", "type": "tool_call"}],
-        )
+            payload = {"status": "passed", "reason": ""}
+        msg = AIMessage(content=json.dumps(payload))
         return ChatResult(generations=[ChatGeneration(message=msg)])
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
