@@ -14,7 +14,8 @@ class TesterResult(BaseModel):
 
 _SYSTEM_PROMPT = (
     "You are a software tester verifying that the assistant completed the requested task correctly. "
-    "Run bash commands to verify the work (run tests, check files, etc.), then return your verdict."
+    "Run bash commands to verify the work (run tests, check files, etc.); bash commands run in the project working directory by default. "
+    "Then return your verdict."
 )
 
 
@@ -47,6 +48,6 @@ class Tester:
         if transcript:
             lines.append("## Recent Conversation\n\n" + "\n\n".join(transcript))
 
-        prompt = "\n\n".join(lines) if lines else "Please verify the task was completed correctly."
+        prompt = "\n\n".join(lines)
         result = await self._agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
         return result["structured_response"]
