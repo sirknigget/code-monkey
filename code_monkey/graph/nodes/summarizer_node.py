@@ -19,16 +19,19 @@ def make_summarizer_node(
             len(state["messages"]),
             state.get("chat_summary_span", 0),
         )
+
         result = await summarizer.summarize(
             state["messages"],
             state.get("chat_summary", ""),
             state.get("chat_summary_span", 0),
         )
+
         logger.debug(
             "Updated summary span=%s with %s last messages",
             result.span,
             len(result.last_messages),
         )
+
         return {
             "chat_summary": result.summary,
             "last_messages": result.last_messages,

@@ -30,14 +30,12 @@ class Tester:
 
     async def run(
         self,
-        project_context: str | None,
+        project_context: str,
         chat_summary: str,
         last_messages: list[BaseMessage],
     ) -> TesterResult:
         """Run the tester agent and return a structured result."""
-        lines: list[str] = []
-        if project_context:
-            lines.append(f"## Project Context\n\n{project_context}")
+        lines = [f"## Project Context\n\n{project_context}"]
         if chat_summary:
             lines.append(f"## Conversation Summary\n\n{chat_summary}")
         transcript = [
@@ -45,8 +43,7 @@ class Tester:
             for m in last_messages
             if isinstance(m, (HumanMessage, AIMessage))
         ]
-        if transcript:
-            lines.append("## Recent Conversation\n\n" + "\n\n".join(transcript))
+        lines.append("## Recent Conversation\n\n" + "\n\n".join(transcript))
 
         prompt = "\n\n".join(lines)
         result = await self._agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
