@@ -9,7 +9,7 @@ from langgraph.types import StreamWriter
 
 from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
-from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
+from code_monkey.graph.agent_graph import MAX_REVIEW_CYCLES
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from tests.graph.mock_nodes_provider import MockNodesProvider
@@ -80,7 +80,6 @@ class _RealToolNodeProvider(NodesProvider):
     ) -> dict:
         return {
             "tester_result": TesterResult(status="passed", reason=""),
-            "tester_iteration_count": state.get("tester_iteration_count", 0) + 1,
             "review_feedback": None,
         }
 
@@ -171,6 +170,7 @@ def test_mermaid_diagram_contains_all_nodes(agent):
     assert "tools" in diagram
     assert "summarizer_node" in diagram
     assert "tester_node" in diagram
+    assert "review_router_node" in diagram
 
 
 # ---------------------------------------------------------------------------

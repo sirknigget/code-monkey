@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from unittest.mock import AsyncMock, MagicMock
 
 from code_monkey.agents.tester.tester import Tester, TesterResult
-from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES, make_tester_node
+from code_monkey.graph.nodes.tester_node import make_tester_node
 from code_monkey.graph.state import ChatbotState
 
 
@@ -17,7 +17,6 @@ from code_monkey.graph.state import ChatbotState
 
 
 def _make_state(
-    tester_iteration_count: int = 0,
     chat_summary: str = "",
     last_messages: list | None = None,
 ) -> ChatbotState:
@@ -30,7 +29,6 @@ def _make_state(
         last_messages=last_messages or [],
         chat_summary_span=0,
         tester_result=None,
-        tester_iteration_count=tester_iteration_count,
     )
 
 
@@ -59,52 +57,29 @@ class TestTesterNode:
         tester = _make_mock_tester(TesterResult(status="passed", reason=""))
         node = make_tester_node(tester)
         writer = MagicMock()
-        state = _make_state(tester_iteration_count=0)
+        state = _make_state()
 
         result = await node(state, _make_config(), writer=writer)
 
-        assert result["review_feedback"] is None
-        assert result["tester_result"] == TesterResult(status="passed", reason="")
-        assert result["tester_iteration_count"] == 1
+        assert result == {
+            "tester_result": TesterResult(status="passed", reason=""),
+            "review_feedback": None,
+        }
         writer.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fail_under_limit_sets_review_feedback_writer_not_called(self) -> None:
-        """When tester fails but below max cycles, review_feedback is set and writer not called."""
+    async def test_fail_sets_review_feedback_writer_not_called(self) -> None:
+        """When tester fails, tester_node returns feedback but no routing policy."""
         reason = "2 tests failed"
         tester = _make_mock_tester(TesterResult(status="failed", reason=reason))
         node = make_tester_node(tester)
         writer = MagicMock()
-        # Already at count 1 → new_count will be 2 < MAX_REVIEW_CYCLES (3)
-        state = _make_state(tester_iteration_count=1)
+        state = _make_state()
 
         result = await node(state, _make_config(), writer=writer)
 
-        assert result["review_feedback"] == reason
-        assert result["tester_result"] == TesterResult(status="failed", reason=reason)
-        assert result["tester_iteration_count"] == 2
+        assert result == {
+            "tester_result": TesterResult(status="failed", reason=reason),
+            "review_feedback": reason,
+        }
         writer.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_fail_at_limit_triggers_writer_warning(self) -> None:
-        """When tester fails and new_count reaches MAX_REVIEW_CYCLES, writer is called with warning."""
-        reason = "Still broken"
-        tester = _make_mock_tester(TesterResult(status="failed", reason=reason))
-        node = make_tester_node(tester)
-        writer = MagicMock()
-        # Already at MAX_REVIEW_CYCLES - 1 → new_count == MAX_REVIEW_CYCLES
-        state = _make_state(tester_iteration_count=MAX_REVIEW_CYCLES - 1)
-
-        result = await node(state, _make_config(), writer=writer)
-
-        assert result["review_feedback"] == reason
-        assert result["tester_iteration_count"] == MAX_REVIEW_CYCLES
-        writer.assert_called_once_with(
-            {
-                "kind": "warning",
-                "content": (
-                    f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. "
-                    f"Stopping.\nLast failure: {reason}"
-                ),
-            }
-        )

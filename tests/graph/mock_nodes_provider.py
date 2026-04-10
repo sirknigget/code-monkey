@@ -71,23 +71,12 @@ class MockNodesProvider(NodesProvider):
     async def tester_node(
         self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
-        from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
-
         self._tester_call_count += 1
-        new_count = state.get("tester_iteration_count", 0) + 1
         if self._tester_call_count <= self._tester_fails_times:
             result = TesterResult(status="failed", reason="Mock tester failure.")
         else:
             result = TesterResult(status="passed", reason="")
-        if result.status == "failed" and new_count >= MAX_REVIEW_CYCLES:
-            writer(
-                {
-                    "kind": "warning",
-                    "content": f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. Stopping.\nLast failure: {result.reason}",
-                }
-            )
         return {
             "tester_result": result,
-            "tester_iteration_count": new_count,
             "review_feedback": result.reason if result.status == "failed" else None,
         }

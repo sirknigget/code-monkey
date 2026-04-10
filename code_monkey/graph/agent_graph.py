@@ -8,10 +8,10 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamWriter
 
 from code_monkey.graph.debug_callback import DebugCallbackHandler
 from code_monkey.graph.default_nodes_provider import DefaultNodesProvider
-from code_monkey.graph.nodes.tester_node import MAX_REVIEW_CYCLES
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.models.model_config import ModelConfig
@@ -20,6 +20,7 @@ from code_monkey.utils.log_utils import get_formatted_logger
 logger = get_formatted_logger(__name__)
 
 DEBUG = False
+MAX_REVIEW_CYCLES = 3
 
 
 @dataclass
@@ -82,6 +83,8 @@ class AgentGraph:
                 yield StreamChunk(content=chunk_data["content"], kind=chunk_data["kind"])
             elif mode == "updates":
                 for _node, node_update in chunk_data.items():
+                    if not isinstance(node_update, dict):
+                        continue
                     for msg in node_update.get("messages", []):
                         if _is_text_ai_message(msg):
                             yield StreamChunk(content=msg.content, kind="assistant")
@@ -145,11 +148,32 @@ class AgentGraph:
     ) -> CompiledStateGraph:
         graph = StateGraph(ChatbotState)
 
+        async def review_router_node(
+            state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+        ) -> dict:
+            result = state["tester_result"]
+            if result is None or result.status == "passed":
+                return {}
+
+            new_count = state.get("tester_iteration_count", 0) + 1
+            if new_count >= MAX_REVIEW_CYCLES:
+                writer(
+                    {
+                        "kind": "warning",
+                        "content": (
+                            f"Max review cycles ({MAX_REVIEW_CYCLES}) reached without passing. "
+                            f"Stopping.\nLast failure: {result.reason}"
+                        ),
+                    }
+                )
+            return {"tester_iteration_count": new_count}
+
         graph.add_node("map_project_node", nodes_provider.map_project_node)
         graph.add_node("orchestrator_node", nodes_provider.orchestrator_node)
         graph.add_node("tools", nodes_provider.tool_node)
         graph.add_node("summarizer_node", nodes_provider.summarizer_node)
         graph.add_node("tester_node", nodes_provider.tester_node)
+        graph.add_node("review_router_node", review_router_node)
 
         graph.add_conditional_edges(
             START,
@@ -170,17 +194,16 @@ class AgentGraph:
         )
         graph.add_edge("tools", "orchestrator_node")
         graph.add_edge("summarizer_node", "tester_node")
+        graph.add_edge("tester_node", "review_router_node")
 
-        def _route_tester(state: ChatbotState) -> str:
+        def _route_tester_review(state: ChatbotState) -> str:
             result = state["tester_result"]
-            if (
-                result is None
-                or result.status == "passed"
-                or state["tester_iteration_count"] >= MAX_REVIEW_CYCLES
-            ):
+            if result is None or result.status == "passed":
+                return END
+            if state["tester_iteration_count"] >= MAX_REVIEW_CYCLES:
                 return END
             return "orchestrator_node"
 
-        graph.add_conditional_edges("tester_node", _route_tester)
+        graph.add_conditional_edges("review_router_node", _route_tester_review)
 
         return graph.compile(checkpointer=checkpointer)

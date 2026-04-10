@@ -48,7 +48,6 @@ class _MockNodesProvider(NodesProvider):
     ) -> dict:
         return {
             "tester_result": TesterResult(status="passed", reason=""),
-            "tester_iteration_count": state.get("tester_iteration_count", 0) + 1,
             "review_feedback": None,
         }
 
