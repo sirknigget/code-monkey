@@ -117,7 +117,32 @@ class ProjectMapper:
                 # Added or modified file
                 module.files[filename] = FileContext(summary=None)
 
+        self._prune_empty_submodules(root)
         return root
+
+    def _prune_empty_submodules(self, module: ModuleContext) -> bool:
+        """Prune empty submodules from a module tree.
+
+        Returns:
+            True if any submodule was pruned anywhere in this subtree.
+        """
+        changed = False
+
+        for name, child in list(module.submodules.items()):
+            child_changed = self._prune_empty_submodules(child)
+
+            if not child.files and not child.submodules:
+                module.submodules.pop(name)
+                changed = True
+                continue
+
+            if child_changed:
+                changed = True
+
+        if changed:
+            module.summary = None
+
+        return changed
 
     async def _summarize_bottom_up(
         self, module: ModuleContext, current_dir: Path
