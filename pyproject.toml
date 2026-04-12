@@ -32,7 +32,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
 ]
 [tool.ruff]
-exclude = ["mock_project", "tests/output"]
+exclude = ["mock_project", "tests/output", ".claude", "test_sandbox"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
