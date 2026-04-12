@@ -11,8 +11,9 @@ from langgraph.types import StreamWriter
 
 from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.controller.controller import Controller
-from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
+from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.nodes.review_router_node import make_review_router_node
+from code_monkey.graph.stream_types import StreamChunk
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.ui.protocol import Command, InputEvent

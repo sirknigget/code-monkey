@@ -10,7 +10,7 @@ from code_monkey.graph.state import ChatbotState
 
 def make_review_router_node(
     max_review_cycles: int = MAX_REVIEW_CYCLES,
-) -> Callable[[ChatbotState, RunnableConfig], Coroutine[Any, Any, dict]]:
+) -> Callable[..., Coroutine[Any, Any, dict]]:
     async def review_router_node(
         state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
     ) -> dict:
