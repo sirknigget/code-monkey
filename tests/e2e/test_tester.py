@@ -27,7 +27,7 @@ async def test_tester_passes_no_warning(project_dir: Path, db_path: Path) -> Non
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Task completed.",
     ]
     warning_msgs = [
@@ -53,7 +53,7 @@ async def test_tester_fails_once_then_passes_on_retry(
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "First attempt.",
         "Second attempt.",
     ]
@@ -102,6 +102,6 @@ async def test_no_tool_call_routes_through_tester_to_end(
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Task completed.",
     ]

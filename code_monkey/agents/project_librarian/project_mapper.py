@@ -41,11 +41,15 @@ class ProjectMapper:
         """Return the cached project context document, or None if not yet available."""
         return self._cache.load_project_context()
 
-    async def map_project(self) -> None:
+    async def map_project(self) -> bool:
         """Build (or incrementally update) the full project context and persist it.
 
+        Returns:
+            True when mapping ran and cache outputs were updated, False when there
+            were no modified files and mapping was skipped entirely.
+
         Summarizes changed files and modules bottom-up, then builds a project-level
-        structure string and summary, and saves all outputs to the cache.  File
+        structure string and summary, and saves all outputs to the cache. File
         hashes are saved last so that a partial write never leaves the cache in an
         inconsistent state.
         """
@@ -60,6 +64,13 @@ class ProjectMapper:
             self.working_dir,
             "hit" if cached_context is not None else "miss",
         )
+
+        if modified_count == 0:
+            logger.debug(
+                "ProjectMapper: no modified files in %s; skipping mapping",
+                self.working_dir,
+            )
+            return False
 
         context = self._build_revised_context(hashes.modified_only, cached_context)
         await self._summarize_bottom_up(context, self.working_dir)
@@ -81,6 +92,7 @@ class ProjectMapper:
         cache.save_project_context(project_context)
         cache.save_hashes(hashes.current)
         logger.debug("ProjectMapper: cache saved successfully")
+        return True
 
     # ------------------------------------------------------------------
     # Private helpers

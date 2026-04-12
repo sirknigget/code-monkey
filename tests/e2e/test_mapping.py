@@ -69,7 +69,7 @@ async def test_mapping_does_not_repeat_within_same_session(
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Created a.py.",
         "Created b.py.",
     ]
@@ -100,7 +100,7 @@ async def test_map_command_triggers_remapping_on_next_message(
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Created first.py.",
         "[map_project_node] project mapped",
         "Created second.py.",

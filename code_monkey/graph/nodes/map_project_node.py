@@ -11,9 +11,15 @@ async def map_project_node(state: ChatbotState, config: RunnableConfig) -> dict:
         return {"needs_mapping": False}
 
     project_mapper: ProjectMapper = (config.get("configurable") or {})["project_mapper"]
-    await project_mapper.map_project()
+    mapping_done = await project_mapper.map_project()
+
+    message = (
+        "[map_project_node] project mapped"
+        if mapping_done
+        else "[map_project_node] mapping skipped (no modified files)"
+    )
 
     return {
-        "messages": [AIMessage(content="[map_project_node] project mapped")],
+        "messages": [AIMessage(content=message)],
         "needs_mapping": False,
     }

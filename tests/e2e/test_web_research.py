@@ -42,7 +42,7 @@ async def test_web_search_executes_and_result_reaches_orchestrator(
 
     # Only text AIMessages appear; tool call and ToolMessage are not shown.
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Research complete.",
     ]
 
@@ -73,7 +73,7 @@ async def test_web_search_followed_by_write_file_in_same_session(
 
     assert (project_dir / "notes.py").read_text() == "# research notes\n"
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Research done.",
         "Notes saved.",
     ]
@@ -91,6 +91,6 @@ async def test_no_tool_call_goes_directly_to_end(
     )
 
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Task completed.",
     ]

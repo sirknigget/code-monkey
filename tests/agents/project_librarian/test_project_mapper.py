@@ -40,9 +40,7 @@ def make_summarizer(
 
 
 class TestNoChanges:
-    """When modified_files is empty and cache is fully summarized,
-    file and module summarizers must not be called; project summary is always
-    regenerated and all outputs are persisted to cache."""
+    """When modified_files is empty, mapping is skipped entirely."""
 
     @pytest.mark.asyncio
     async def test_cached_summaries_persisted_unchanged(self, tmp_path: Path) -> None:
@@ -71,28 +69,15 @@ class TestNoChanges:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is False
         summarizer.summarize_file.assert_not_called()
         summarizer.summarize_module.assert_not_called()
-        summarizer.summarize_project.assert_called_once()
-
-        saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
-        assert saved_context.summary == "root-summary"
-        assert saved_context.files["main.py"].summary == "main-file-summary"
-        assert saved_context.submodules["pkg"].summary == "pkg-summary"
-        assert (
-            saved_context.submodules["pkg"].files["mod.py"].summary
-            == "mod-file-summary"
-        )
-
-        mock_cache.return_value.save_project_context.assert_called_once_with(
-            "# Project Summary\n\n"
-            "project-summary\n\n"
-            "# Project Structure\n\n"
-            "project-structure"
-        )
-        mock_cache.return_value.save_hashes.assert_called_once_with({})
+        summarizer.summarize_project.assert_not_called()
+        mock_cache.return_value.save_code_context.assert_not_called()
+        mock_cache.return_value.save_project_context.assert_not_called()
+        mock_cache.return_value.save_hashes.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +119,9 @@ class TestFirstRun:
             mock_cache.return_value.load_code_context.return_value = None
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         assert summarizer.summarize_file.call_count == 2
         assert summarizer.summarize_module.call_count == 2
         summarizer.summarize_project.assert_called_once()
@@ -210,8 +196,9 @@ class TestModifiedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         pkg = saved_context.submodules["pkg"]
         assert pkg.files["changed.py"].summary == "changed-new-summary"
@@ -277,8 +264,9 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         pkg = saved_context.submodules["pkg"]
         assert "deleted.py" not in pkg.files
@@ -322,8 +310,9 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         assert "pkg" not in saved_context.submodules
         summarizer.summarize_file.assert_not_called()
@@ -368,8 +357,9 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         assert "pkg" not in saved_context.submodules
         summarizer.summarize_file.assert_not_called()
@@ -413,8 +403,9 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         assert "pkg" not in saved_context.submodules
         summarizer.summarize_file.assert_not_called()
@@ -469,8 +460,9 @@ class TestDeletedFile:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         pkg = saved_context.submodules["pkg"]
         assert "deleted.py" not in pkg.files
@@ -523,8 +515,9 @@ class TestWholeTreePrune:
             mock_cache.return_value.load_code_context.return_value = cached_context
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
         assert "stale" not in saved_context.submodules
         assert saved_context.files["main.py"].summary == "main-new-summary"
@@ -584,8 +577,9 @@ class TestBottomUpOrder:
             mock_cache.return_value.load_code_context.return_value = None
             mock_structure.return_value.build.return_value = "project-structure"
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
+        assert mapping_done is True
         # 2 files changed → 2 file summarizations
         assert summarizer.summarize_file.call_count == 2
         # sub + pkg + root → 3 module summarizations
@@ -608,7 +602,7 @@ class TestBottomUpOrder:
 
 
 class TestSaveOrder:
-    """Verify that hashes are saved last — after code context and project context."""
+    """Verify that no cache writes happen when mapping is skipped."""
 
     @pytest.mark.asyncio
     async def test_hashes_saved_after_context(self, tmp_path: Path) -> None:
@@ -636,12 +630,13 @@ class TestSaveOrder:
                 save_order.append("hashes")
             )
 
-            await ProjectMapper(tmp_path, summarizer).map_project()
+            mapping_done = await ProjectMapper(tmp_path, summarizer).map_project()
 
-        assert save_order == ["code", "project", "hashes"]
-        # No files → no file summarizations; empty root still gets module-summarized
+        assert mapping_done is False
+        assert save_order == []
         assert summarizer.summarize_file.call_count == 0
-        assert summarizer.summarize_module.call_count == 1
+        assert summarizer.summarize_module.call_count == 0
+        summarizer.summarize_project.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

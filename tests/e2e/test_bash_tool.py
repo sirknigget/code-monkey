@@ -44,7 +44,9 @@ async def test_bash_runs_python_and_writes_output_file(
     #           to prove the command actually executed (not just that the LLM responded).
     config = FakeModelConfig(
         orchestrator_responses=[
-            terminal_call("python -c \"open('output.txt', 'w').write('hello from bash')\""),
+            terminal_call(
+                "python -c \"open('output.txt', 'w').write('hello from bash')\""
+            ),
             "Script ran successfully.",
         ]
     )
@@ -58,7 +60,7 @@ async def test_bash_runs_python_and_writes_output_file(
 
     assert (project_dir / "output.txt").read_text() == "hello from bash"
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Script ran successfully.",
     ]
 
@@ -89,7 +91,7 @@ async def test_write_file_then_run_it_with_bash(
     assert (project_dir / "app.py").read_text() == _script
     assert (project_dir / "result.txt").read_text() == "app ran"
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Script created.",
         "Script executed.",
     ]
@@ -103,7 +105,9 @@ async def test_bash_approval_denied_does_not_execute_command(
     #           aborted and no side effects occur — file must not be created.
     config = FakeModelConfig(
         orchestrator_responses=[
-            terminal_call("python -c \"open('should_not_exist.txt', 'w').write('oops')\""),
+            terminal_call(
+                "python -c \"open('should_not_exist.txt', 'w').write('oops')\""
+            ),
             "Command aborted.",
         ]
     )

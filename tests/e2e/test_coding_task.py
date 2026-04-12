@@ -43,7 +43,7 @@ async def test_new_project_agent_creates_files(
 
     assert (project_dir / "main.py").read_text() == _MAIN_PY
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "App created successfully.",
     ]
 
@@ -71,7 +71,7 @@ async def test_multiple_messages_each_create_a_file(
     assert (project_dir / "submodule_a.py").read_text() == _MODULE_A
     assert (project_dir / "submodule_b.py").read_text() == _MODULE_B
     assert ui.assistant_messages() == [
-        "[map_project_node] project mapped",
+        "[map_project_node] mapping skipped (no modified files)",
         "Submodule A created.",
         "Submodule B created.",
     ]
