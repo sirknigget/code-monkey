@@ -228,7 +228,7 @@ class TestModifiedFile:
 
 class TestDeletedFile:
     """When a file hash is None (deleted), the file must be absent from the
-    saved context and the parent module must be re-summarized."""
+    saved context and empty parent modules must be pruned."""
 
     @pytest.mark.asyncio
     async def test_deleted_file_absent_and_module_resummarized(
@@ -283,6 +283,91 @@ class TestDeletedFile:
         summarizer.summarize_file.assert_not_called()
         # pkg and root are re-summarized (deleted file's parent + root)
         assert summarizer.summarize_module.call_count == 2
+        summarizer.summarize_project.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deleted_last_file_prunes_empty_module(self, tmp_path: Path) -> None:
+        cached_context = ModuleContext(
+            summary="root-summary",
+            submodules={
+                "pkg": ModuleContext(
+                    summary="pkg-old-summary",
+                    files={
+                        "deleted.py": FileContext(summary="deleted-summary"),
+                    },
+                )
+            },
+        )
+
+        summarizer = MagicMock(spec=Summarizer)
+        summarizer.summarize_module.return_value = "root-new-summary"
+        summarizer.summarize_project.return_value = "project-summary"
+
+        modified_files: dict[str, str | None] = {"pkg/deleted.py": None}
+
+        with (
+            patch(PATCH_HASHES) as mock_hashes,
+            patch(PATCH_CACHE) as mock_cache,
+            patch(PATCH_STRUCTURE) as mock_structure,
+        ):
+            mock_hashes.return_value.load.return_value = Hashes(
+                modified_only=modified_files, current={}
+            )
+            mock_cache.return_value.load_code_context.return_value = cached_context
+            mock_structure.return_value.build.return_value = "project-structure"
+
+            await ProjectMapper(tmp_path, summarizer).map_project()
+
+        saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
+        assert "pkg" not in saved_context.submodules
+        summarizer.summarize_file.assert_not_called()
+        summarizer.summarize_module.assert_called_once()
+        summarizer.summarize_project.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deleted_last_file_prunes_empty_ancestor_modules(
+        self, tmp_path: Path
+    ) -> None:
+        cached_context = ModuleContext(
+            summary="root-summary",
+            submodules={
+                "pkg": ModuleContext(
+                    summary="pkg-old-summary",
+                    submodules={
+                        "sub": ModuleContext(
+                            summary="sub-old-summary",
+                            files={
+                                "deleted.py": FileContext(summary="deleted-summary"),
+                            },
+                        )
+                    },
+                )
+            },
+        )
+
+        summarizer = MagicMock(spec=Summarizer)
+        summarizer.summarize_module.return_value = "root-new-summary"
+        summarizer.summarize_project.return_value = "project-summary"
+
+        modified_files: dict[str, str | None] = {"pkg/sub/deleted.py": None}
+
+        with (
+            patch(PATCH_HASHES) as mock_hashes,
+            patch(PATCH_CACHE) as mock_cache,
+            patch(PATCH_STRUCTURE) as mock_structure,
+        ):
+            mock_hashes.return_value.load.return_value = Hashes(
+                modified_only=modified_files, current={}
+            )
+            mock_cache.return_value.load_code_context.return_value = cached_context
+            mock_structure.return_value.build.return_value = "project-structure"
+
+            await ProjectMapper(tmp_path, summarizer).map_project()
+
+        saved_context = mock_cache.return_value.save_code_context.call_args[0][0]
+        assert "pkg" not in saved_context.submodules
+        summarizer.summarize_file.assert_not_called()
+        summarizer.summarize_module.assert_called_once()
         summarizer.summarize_project.assert_called_once()
 
 

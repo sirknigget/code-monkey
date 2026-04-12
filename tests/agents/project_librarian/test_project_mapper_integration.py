@@ -237,3 +237,30 @@ class TestCompositeFileChanges:
 
         # Hashes contain the new file
         assert any("new_helper.py" in path for path in hashes2)
+
+    @pytest.mark.asyncio
+    async def test_deleted_folder_removed_from_cached_context(
+        self, mock_project_working_copy: Path
+    ) -> None:
+        await _make_mapper(mock_project_working_copy).map_project()
+
+        tools_dir = (
+            mock_project_working_copy / "src" / "crewai_trading_strategy" / "tools"
+        )
+        for path in tools_dir.iterdir():
+            if path.is_file():
+                path.unlink()
+
+        mapper = _make_mapper(mock_project_working_copy)
+        with patch.object(
+            mapper.summarizer,
+            "summarize_module",
+            wraps=mapper.summarizer.summarize_module,
+        ) as spy_module:
+            await mapper.map_project()
+
+        context = _cache(mock_project_working_copy).load_code_context()
+        assert context is not None
+        package = context.submodules["src"].submodules["crewai_trading_strategy"]
+        assert "tools" not in package.submodules
+        assert spy_module.call_count == 3

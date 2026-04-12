@@ -113,11 +113,31 @@ class ProjectMapper:
             if hash_val is None:
                 # Deleted file
                 module.files.pop(filename, None)
+                self._prune_empty_submodules(root, parts[:-1])
             else:
                 # Added or modified file
                 module.files[filename] = FileContext(summary=None)
 
         return root
+
+    def _prune_empty_submodules(
+        self, root: ModuleContext, module_parts: tuple[str, ...]
+    ) -> None:
+        """Remove empty submodules along a module path after file deletion."""
+        lineage: list[tuple[ModuleContext, str, ModuleContext]] = []
+        module = root
+
+        for part in module_parts:
+            child = module.submodules.get(part)
+            if child is None:
+                return
+            lineage.append((module, part, child))
+            module = child
+
+        for parent, part, child in reversed(lineage):
+            if child.files or child.submodules:
+                break
+            parent.submodules.pop(part, None)
 
     async def _summarize_bottom_up(
         self, module: ModuleContext, current_dir: Path
