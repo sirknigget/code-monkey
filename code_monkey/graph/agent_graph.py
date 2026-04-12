@@ -1,6 +1,6 @@
-import logging
 from collections.abc import AsyncIterator
-from typing import cast
+from dataclasses import dataclass
+from typing import Literal, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -8,10 +8,10 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-
 from code_monkey.graph.debug_callback import DebugCallbackHandler
 from code_monkey.graph.default_nodes_provider import DefaultNodesProvider
 from code_monkey.graph.nodes_provider import NodesProvider
+from code_monkey.graph.review_policy import MAX_REVIEW_CYCLES
 from code_monkey.graph.state import ChatbotState
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.utils.log_utils import get_formatted_logger
@@ -19,6 +19,12 @@ from code_monkey.utils.log_utils import get_formatted_logger
 logger = get_formatted_logger(__name__)
 
 DEBUG = False
+
+
+@dataclass
+class StreamChunk:
+    content: str
+    kind: Literal["assistant", "warning"] = "assistant"
 
 
 def _is_text_ai_message(msg: BaseMessage) -> bool:
@@ -59,21 +65,27 @@ class AgentGraph:
         """Update graph state to trigger project re-mapping on the next astream call."""
         await self._graph.aupdate_state(self._thread_config, {"needs_mapping": True})
 
-    async def astream(self, message: str) -> AsyncIterator[str]:
-        """Stream text content of each visible AI message as the graph runs."""
+    async def astream(self, message: str) -> AsyncIterator[StreamChunk]:
+        """Stream visible AI messages and warning chunks as the graph runs."""
         is_new_session = (
             await self._checkpointer.aget_tuple(self._thread_config) is None
         )
         state = self._make_state(message, is_new_session)
-        async for update in self._graph.astream(
+        async for mode, data in self._graph.astream(  # type: ignore[misc]
             state,
             config=self._run_config(),
-            stream_mode="updates",
+            stream_mode=["updates", "custom"],
         ):
-            for _node, node_update in update.items():
-                for msg in node_update.get("messages", []):
-                    if _is_text_ai_message(msg):
-                        yield msg.content
+            chunk_data: dict = data  # type: ignore[assignment]
+            if mode == "custom":
+                yield StreamChunk(content=chunk_data["content"], kind=chunk_data["kind"])
+            elif mode == "updates":
+                for _node, node_update in chunk_data.items():
+                    if not isinstance(node_update, dict):
+                        continue
+                    for msg in node_update.get("messages", []):
+                        if _is_text_ai_message(msg):
+                            yield StreamChunk(content=msg.content, kind="assistant")
 
     async def aget_history(self) -> AsyncIterator[tuple[str, str]]:
         """Yield (role, content) pairs from the persisted checkpoint."""
@@ -106,9 +118,15 @@ class AgentGraph:
             "messages": [HumanMessage(content=message)],
             "review_feedback": None,
             "iteration_count": 0,
+            "tester_result": None,
+            "tester_iteration_count": 0,
+            "retry_review": False,
         }
         if is_new_session:
             state["needs_mapping"] = True
+            state["chat_summary"] = ""
+            state["last_messages"] = []
+            state["chat_summary_span"] = 0
         return state
 
     def _run_config(self) -> RunnableConfig:
@@ -132,6 +150,9 @@ class AgentGraph:
         graph.add_node("map_project_node", nodes_provider.map_project_node)
         graph.add_node("orchestrator_node", nodes_provider.orchestrator_node)
         graph.add_node("tools", nodes_provider.tool_node)
+        graph.add_node("summarizer_node", nodes_provider.summarizer_node)
+        graph.add_node("tester_node", nodes_provider.tester_node)
+        graph.add_node("review_router_node", nodes_provider.review_router_node)
 
         graph.add_conditional_edges(
             START,
@@ -147,9 +168,18 @@ class AgentGraph:
             lambda state: (
                 "tools"
                 if cast(AIMessage, cast(ChatbotState, state)["messages"][-1]).tool_calls
-                else END
+                else "summarizer_node"
             ),
         )
         graph.add_edge("tools", "orchestrator_node")
+        graph.add_edge("summarizer_node", "tester_node")
+        graph.add_edge("tester_node", "review_router_node")
+
+        graph.add_conditional_edges(
+            "review_router_node",
+            lambda state: (
+                "orchestrator_node" if cast(ChatbotState, state)["retry_review"] else END
+            ),
+        )
 
         return graph.compile(checkpointer=checkpointer)

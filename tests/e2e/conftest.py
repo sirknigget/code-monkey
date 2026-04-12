@@ -3,12 +3,13 @@
 All e2e tests call setup() from main.py with:
   - MockUI: captures all UI calls and provides finite inputs
   - A SQLite checkpointer factory pointed at tmp_path (avoids ~/.codemonkey)
-  - FakeModelConfig: returns deterministic fake LLMs that emit real tool calls
+  - FakeModelConfig: returns deterministic fake LLMs for orchestrator/tester roles
 
 DefaultNodesProvider runs as-is (including Playwright). Only the LLMs are faked;
-the tool calls they emit are executed by the real ToolNode against the real filesystem.
+orchestrator tool calls are still executed by the real ToolNode against the real filesystem.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,6 @@ from code_monkey.graph.checkpointer import CheckpointerResult
 from code_monkey.main import setup
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.protocol import InputEvent
-
 
 # ---------------------------------------------------------------------------
 # Fake LLM
@@ -53,7 +53,7 @@ class FakeChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=response)])
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-        return self._generate(messages, stop, run_manager, **kwargs)
+        return self._generate(messages, stop, **kwargs)
 
     @property
     def _llm_type(self) -> str:
@@ -111,6 +111,49 @@ def web_search_call(query: str, call_id: str = "c1") -> AIMessage:
 
 
 # ---------------------------------------------------------------------------
+# Fake Tester Model
+# ---------------------------------------------------------------------------
+
+
+class FakeTesterModel(BaseChatModel):
+    """Fake model for the Tester subgraph.
+
+    Returns a provider-native JSON result immediately (no bash calls), with
+    status depending on the fail counter.
+
+    Args:
+        fails_times: How many times to return status="failed" before passing.
+    """
+
+    fails_times: int = 0
+    _fails_remaining: int = PrivateAttr(default=0)
+
+    def __init__(self, **data: Any) -> None:
+        data.setdefault("profile", {"structured_output": True})
+        super().__init__(**data)
+        self._fails_remaining = self.fails_times
+
+    def bind_tools(self, tools, **kwargs):  # type: ignore[override]
+        return self.bind(tools=tools, **kwargs)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if self._fails_remaining > 0:
+            self._fails_remaining -= 1
+            payload = {"status": "failed", "reason": "Tests did not pass."}
+        else:
+            payload = {"status": "passed", "reason": ""}
+        msg = AIMessage(content=json.dumps(payload))
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        return self._generate(messages, stop, **kwargs)
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-tester"
+
+
+# ---------------------------------------------------------------------------
 # Fake ModelConfig
 # ---------------------------------------------------------------------------
 
@@ -121,12 +164,18 @@ class FakeModelConfig(ModelConfig):
     Args:
         orchestrator_responses: Responses the orchestrator returns in order.
             Typically alternates tool_call → final_text → tool_call → final_text…
+        tester_fails_times: How many times the tester returns "failed" before passing.
     """
 
-    def __init__(self, orchestrator_responses: list | None = None) -> None:
+    def __init__(
+        self,
+        orchestrator_responses: list | None = None,
+        tester_fails_times: int = 0,
+    ) -> None:
         self._orchestrator_responses: list = orchestrator_responses or [
             "Task completed."
         ]
+        self._tester_fails_times = tester_fails_times
 
     def orchestrator_model(self) -> BaseChatModel:
         return FakeChatModel(responses=self._orchestrator_responses)
@@ -137,6 +186,12 @@ class FakeModelConfig(ModelConfig):
     def web_researcher_model(self) -> BaseChatModel:
         # Returns text directly so WebResearcher terminates without Playwright calls.
         return FakeChatModel(responses=["Web research results."])
+
+    def chat_summarizer_model(self) -> BaseChatModel:
+        return FakeChatModel(responses=["Summary."])
+
+    def tester_model(self) -> BaseChatModel:
+        return FakeTesterModel(fails_times=self._tester_fails_times)  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------

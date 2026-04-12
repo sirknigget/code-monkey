@@ -53,8 +53,11 @@ class Controller:
                 continue
 
             try:
-                async for content in self._graph.astream(event.text):
-                    self._ui.assistant_message(content)
+                async for chunk in self._graph.astream(event.text):
+                    if chunk.kind == "warning":
+                        self._ui.system_message(chunk.content)
+                    else:
+                        self._ui.assistant_message(chunk.content)
             except Exception as e:
                 logger.exception("Error processing turn")
                 self._ui.show_error(f"Error: {e}")

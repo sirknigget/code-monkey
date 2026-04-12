@@ -14,3 +14,9 @@ class ModelConfig:
 
     def orchestrator_model(self) -> BaseChatModel:
         return get_openai_model(GPT_4O)
+
+    def tester_model(self) -> BaseChatModel:
+        return get_openai_model(GPT_4O)
+
+    def chat_summarizer_model(self) -> BaseChatModel:
+        return get_openai_model(GPT_4O_MINI)

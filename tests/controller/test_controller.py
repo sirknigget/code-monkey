@@ -1,19 +1,27 @@
 """Tests for the Controller CLI loop."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
+from code_monkey.agents.tester.tester import TesterResult
 from code_monkey.controller.controller import Controller
-from code_monkey.graph.agent_graph import AgentGraph
+from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
+from code_monkey.graph.nodes.review_router_node import make_review_router_node
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.ui.protocol import Command, InputEvent
 
 
 class _MockNodesProvider(NodesProvider):
+    def __init__(self) -> None:
+        self._review_router_node = make_review_router_node()
+
     async def map_project_node(
         self, state: ChatbotState, config: RunnableConfig
     ) -> dict:
@@ -22,11 +30,35 @@ class _MockNodesProvider(NodesProvider):
             "needs_mapping": False,
         }
 
-    async def orchestrator_node(self, state: ChatbotState) -> dict:
+    async def orchestrator_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
         return {"messages": [AIMessage(content="[mock] orchestrator decision")]}
 
     async def tool_node(self, state: ChatbotState) -> dict:
         return {"messages": [AIMessage(content="[mock] tool result")]}
+
+    async def summarizer_node(
+        self, state: ChatbotState, config: RunnableConfig
+    ) -> dict:
+        return {
+            "chat_summary": state.get("chat_summary", ""),
+            "last_messages": state.get("messages", []),
+            "chat_summary_span": state.get("chat_summary_span", 0),
+        }
+
+    async def tester_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        return {
+            "tester_result": TesterResult(status="passed", reason=""),
+            "review_feedback": None,
+        }
+
+    async def review_router_node(
+        self, state: ChatbotState, config: RunnableConfig, *, writer: StreamWriter
+    ) -> dict:
+        return await self._review_router_node(state, config, writer=writer)
 
 
 class _MockUI:
@@ -146,3 +178,18 @@ async def test_clear_then_restart_starts_fresh():
     ui2 = _MockUI([])
     await Controller(ui2, _make_graph(shared)).run()
     assert all(content != "Resuming previous session." for _, content in ui2.messages)
+
+
+@pytest.mark.asyncio
+async def test_warning_chunk_calls_system_message_not_assistant_message():
+    async def _warning_astream(message: str) -> AsyncIterator[StreamChunk]:
+        yield StreamChunk(content="Max review cycles reached.", kind="warning")
+
+    graph = _make_graph()
+    graph.astream = _warning_astream  # type: ignore[method-assign]
+
+    ui = _MockUI([InputEvent("hello")])
+    await Controller(ui, graph).run()
+
+    assert ("system", "Max review cycles reached.") in ui.messages
+    assert all(kind != "assistant" for kind, _ in ui.messages)
