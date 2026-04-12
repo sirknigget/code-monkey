@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI
 
 GPT_4O = "gpt-4o"
 GPT_4O_MINI = "gpt-4o-mini"
+GPT_4_1 = "gpt-4.1"
 MINIMAX_M2 = "MiniMax-M2.1"
 OLLAMA_DEFAULT_MODEL = "qwen2.5:1.5b"
 

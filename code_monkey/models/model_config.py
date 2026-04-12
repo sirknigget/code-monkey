@@ -1,6 +1,6 @@
 from langchain_core.language_models import BaseChatModel
 
-from code_monkey.models.models import GPT_4O, GPT_4O_MINI, get_openai_model
+from code_monkey.models.models import GPT_4_1, GPT_4O, GPT_4O_MINI, get_openai_model
 
 
 class ModelConfig:
@@ -13,10 +13,10 @@ class ModelConfig:
         return get_openai_model(GPT_4O_MINI)
 
     def orchestrator_model(self) -> BaseChatModel:
-        return get_openai_model(GPT_4O)
+        return get_openai_model(GPT_4_1)
 
     def tester_model(self) -> BaseChatModel:
-        return get_openai_model(GPT_4O)
+        return get_openai_model(GPT_4_1)
 
     def chat_summarizer_model(self) -> BaseChatModel:
         return get_openai_model(GPT_4O_MINI)
