@@ -13,7 +13,6 @@ from langgraph.types import CustomStreamPart, StreamPart, UpdatesStreamPart
 from code_monkey.graph.debug_callback import DebugCallbackHandler
 from code_monkey.graph.default_nodes_provider import DefaultNodesProvider
 from code_monkey.graph.nodes_provider import NodesProvider
-from code_monkey.graph.review_policy import MAX_REVIEW_CYCLES
 from code_monkey.graph.state import ChatbotState
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.utils.log_utils import get_formatted_logger
