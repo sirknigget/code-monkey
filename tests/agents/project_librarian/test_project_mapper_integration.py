@@ -264,3 +264,43 @@ class TestCompositeFileChanges:
         package = context.submodules["src"].submodules["crewai_trading_strategy"]
         assert "tools" not in package.submodules
         assert spy_module.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_and_add_in_same_folder_keeps_cached_module(
+        self, mock_project_working_copy: Path
+    ) -> None:
+        await _make_mapper(mock_project_working_copy).map_project()
+
+        utils_dir = mock_project_working_copy / "src" / "utils"
+        deleted_path = utils_dir / "code_utils.py"
+        deleted_path.unlink()
+
+        added_path = utils_dir / "replacement_utils.py"
+        added_path.write_text("def replacement(): pass", encoding="utf-8")
+
+        mapper = _make_mapper(mock_project_working_copy)
+        with (
+            patch.object(
+                mapper.summarizer,
+                "summarize_file",
+                wraps=mapper.summarizer.summarize_file,
+            ) as spy_file,
+            patch.object(
+                mapper.summarizer,
+                "summarize_module",
+                wraps=mapper.summarizer.summarize_module,
+            ) as spy_module,
+        ):
+            await mapper.map_project()
+
+        context = _cache(mock_project_working_copy).load_code_context()
+        assert context is not None
+        utils = context.submodules["src"].submodules["utils"]
+        assert "code_utils.py" not in utils.files
+        assert "replacement_utils.py" in utils.files
+        assert (
+            utils.files["replacement_utils.py"].summary
+            == "file-summary:replacement_utils.py"
+        )
+        assert spy_file.call_count == 1
+        assert spy_module.call_count == 3
