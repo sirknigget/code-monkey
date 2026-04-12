@@ -35,7 +35,7 @@ Summary:"""
 
 #####
 
-PROJECT_SUMMARY_TEMPLATE = """You are a code analyst. Create a project structure overview with the most important parts.
+PROJECT_SUMMARY_TEMPLATE = """You are a code analyst. Create a project overview with the most important parts.
 
 Project name: {project_name}
 
@@ -43,12 +43,13 @@ Module summaries by directory:
 {module_summaries}
 
 Requirements:
-- Use indentation tree format to show directory hierarchy
-- Show module purpose at each level
+- Show module purpose
 - Focus on key modules and their responsibilities
-- Keep the entire project structure description under {max_lines} lines total. 
+- Keep the entire project description under {max_lines} lines total. 
 = If the project is too large, omit less important modules and files, but keep the most critical ones to keep the output under {max_lines} lines.
 
-Project Structure:
+Project structure for your reference:
 {project_structure}
+
+If the project is empty, too partial or unclear, simply say something like "The project is empty or lacks sufficient information to provide a summary." and do not attempt to summarize.
 """
