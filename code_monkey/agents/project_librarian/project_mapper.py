@@ -38,7 +38,7 @@ class ProjectMapper:
         return self._cache.load_code_context()
 
     def get_project_context(self) -> str | None:
-        """Return the cached project context summary, or None if not yet available."""
+        """Return the cached project context document, or None if not yet available."""
         return self._cache.load_project_context()
 
     async def map_project(self) -> None:
@@ -70,9 +70,15 @@ class ProjectMapper:
             code_context=context,
             project_name=self.working_dir.name,
         )
+        project_context = (
+            "# Project Summary\n\n"
+            f"{project_summary}\n\n"
+            "# Project Structure\n\n"
+            f"{project_structure}"
+        )
 
         cache.save_code_context(context)
-        cache.save_project_context(project_summary)
+        cache.save_project_context(project_context)
         cache.save_hashes(hashes.current)
         logger.debug("ProjectMapper: cache saved successfully")
 

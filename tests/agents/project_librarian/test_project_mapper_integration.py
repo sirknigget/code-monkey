@@ -19,6 +19,9 @@ from langchain_core.messages import AIMessage
 from code_monkey.agents.project_librarian.cache_manager import CacheManager
 from code_monkey.agents.project_librarian.project_mapper import ProjectMapper
 from code_monkey.agents.project_librarian.summarizer import Summarizer
+from code_monkey.agents.project_librarian.utils.project_structure import (
+    ProjectStructure,
+)
 
 # ---------------------------------------------------------------------------
 # Deterministic mock LLM
@@ -111,7 +114,13 @@ class TestInitialMapping:
         hashes = cache.load_hashes()
 
         # Project-level outputs
-        assert project_ctx == "project-summary"
+        expected_project_structure = ProjectStructure(mock_project_working_copy).build()
+        assert project_ctx == (
+            "# Project Summary\n\n"
+            "project-summary\n\n"
+            "# Project Structure\n\n"
+            f"{expected_project_structure}"
+        )
         assert len(hashes) > 0
 
         # Root context exists and has a summary

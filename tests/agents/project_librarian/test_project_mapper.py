@@ -87,7 +87,10 @@ class TestNoChanges:
         )
 
         mock_cache.return_value.save_project_context.assert_called_once_with(
-            "project-summary"
+            "# Project Summary\n\n"
+            "project-summary\n\n"
+            "# Project Structure\n\n"
+            "project-structure"
         )
         mock_cache.return_value.save_hashes.assert_called_once_with({})
 
@@ -146,7 +149,10 @@ class TestFirstRun:
         assert saved_context.submodules["pkg"].summary == "module-summary"
 
         mock_cache.return_value.save_project_context.assert_called_once_with(
-            "project-summary"
+            "# Project Summary\n\n"
+            "project-summary\n\n"
+            "# Project Structure\n\n"
+            "project-structure"
         )
         mock_cache.return_value.save_hashes.assert_called_once_with(current)
 
