@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-code-monkey is a CLI coding assistant with project context awareness. It runs a LangGraph-based chat loop backed by two specialized agents: a **Project Librarian** that incrementally maps the user's codebase and a **Web Researcher** for live web lookups. Conversation state persists in SQLite via `AsyncSqliteSaver`.
+`code-monkey` is a CLI coding assistant built around a LangGraph workflow. It operates on a target project root, incrementally maps that codebase into cached project context, and uses that context to answer coding requests. The runtime has three distinct layers of persistence:
+
+- LangGraph conversation checkpoints in SQLite
+- Project-librarian cache files under the target project's `.codemonkey/`
+- A running chat summary used to compress older conversation history without losing the latest turn
+
+The root `README.md` is minimal, and there are no `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files in this repo.
 
 ## Development Commands
 
@@ -12,123 +18,123 @@ code-monkey is a CLI coding assistant with project context awareness. It runs a 
 # Install dependencies
 uv sync
 
-# Run tests
+# Run the CLI against the current directory
+uv run python -m code_monkey.main
+
+# Run the CLI against an explicit project root
+uv run python -m code_monkey.main --path /path/to/project
+
+# Run the full test suite
 uv run pytest
 
-# Run a specific test file
-uv run pytest tests/agents/project_librarian/test_project_mapper.py -v
+# Run a single test file
+uv run pytest tests/graph/test_agent_graph.py -v
 
-# Run tests for a module
+# Run a focused test module/directory
 uv run pytest tests/agents/project_librarian/ -v
 
-# Lint
+# Lint / format / type-check
 uv run ruff check .
 uv run ruff format .
-
-# Type check
 uv run pyright
-
-# Add new dependencies
-uv add <package>
 ```
 
-## Running the CLI
+## Runtime Behavior
 
-```bash
-uv run python -m code_monkey.main
-uv run python -m code_monkey.main --path /path/to/project  # explicit project root (default: cwd)
-```
-
-Conversation state persists across runs via SQLite at `.codemonkey/checkpoints.db`. The thread ID is the absolute path of the project root, so each project gets its own conversation history. Type `/clear` in the CLI to reset the session.
+- `code_monkey/main.py` is the composition root: it loads `.env`, creates the checkpointer, builds `AgentGraph`, and hands it to `Controller`.
+- The CLI defaults to `cwd` as the target project root; `--path` overrides it.
+- Conversation checkpoints live in `~/.codemonkey/checkpoints.db` by default and can be overridden with `CODEMONKEY_DB_PATH`.
+- The checkpoint thread ID is the absolute target project path, so each mapped project gets its own persisted chat history even though the DB is global.
+- The controller handles `/clear`, `/map`, and `/exit` at the UI layer:
+  - `/clear` deletes the current thread's checkpointed conversation
+  - `/map` forces project remapping on the next user turn
+  - `/exit` ends the session
 
 ## Architecture
 
-The application has four layers: **UI → Controller → Graph → Agents/Tools**.
+The main flow is **UI → Controller → AgentGraph → Nodes/Tools/Agents**.
 
-### Top-level graph (`code_monkey/graph/`)
+### UI and controller
 
-`AgentGraph` wraps a LangGraph `StateGraph` with three nodes:
+`ChatbotUI` is a protocol in `code_monkey/ui/protocol.py`; the controller depends only on that interface. `Controller` owns the interactive loop, replays prior history when a checkpoint exists, interprets slash commands, and streams graph output back to the UI.
 
-- `map_project_node` — runs the Project Librarian to refresh project context (only on first turn or when `needs_mapping=True`)
-- `orchestrator_node` — main LLM turn; calls tools if needed
-- `tool_node` — executes tool calls from the orchestrator
+There are two UI implementations:
+- `ui/impl/cli_simple.py` — the current default used by `main.py`
+- `ui/impl/cli_prompt_toolkit.py` — richer terminal UX with slash-command completion
 
-Flow: `START → (map_project_node →) orchestrator_node ↔ tool_node → END`
+### LangGraph workflow
 
-`ChatbotState` (in `graph/state.py`) carries `messages` (append-only), `needs_mapping`, `review_feedback`, and `iteration_count`.
+`AgentGraph` compiles a `StateGraph` with this flow:
 
-`NodesProvider` is an ABC that decouples node implementations from the graph — `DefaultNodesProvider` wires the real nodes; `tests/graph/mock_nodes_provider.py` provides a test double.
+`START → (map_project_node?) → orchestrator_node ↔ tools → summarizer_node → tester_node → review_router_node → END|orchestrator_node`
 
-### Controller (`code_monkey/controller/`)
+Key behavior:
+- `map_project_node` runs only for a new session or after `/map`
+- `orchestrator_node` builds the system prompt from the cached project context plus any review feedback from a failed verification pass
+- `tools` executes tool calls and loops back into the orchestrator until the model returns a plain assistant response
+- `summarizer_node` compresses older chat history while keeping the most recent user turn intact in `last_messages`
+- `tester_node` evaluates whether the assistant actually satisfied the user's request
+- `review_router_node` either ends the turn or sends the workflow back through the orchestrator with failure feedback; review retries are capped by `MAX_REVIEW_CYCLES = 3`
 
-`Controller` owns the CLI run loop. It wires a `ChatbotUI` to `AgentGraph`, manages the `AsyncSqliteSaver` checkpointer, and handles the `Command.CLEAR` command (deletes the SQLite thread).
+`ChatbotState` in `code_monkey/graph/state.py` is the contract across nodes. Besides `messages`, it carries `needs_mapping`, `chat_summary`, `last_messages`, `tester_result`, `review_feedback`, and the counters that control retry loops.
 
-### UI (`code_monkey/ui/`)
+### Tooling available to the orchestrator
 
-`ChatbotUI` is a `Protocol` — the controller depends only on this interface. Two implementations: `SimpleCliChatbotUI` (plain print/input) and `cli_prompt_toolkit.py` (richer TUI). The UI knows nothing about graphs or message roles.
+`DefaultNodesProvider.create()` wires three tool groups into the orchestrator:
+- file read/write tools scoped to the target project root
+- a bash tool scoped to the target project root
+- a web researcher tool
 
-### Web Researcher (`agents/web_researcher/`)
+Important detail: the bash tool is created with `ask_human_input=True`, so shell commands require explicit user approval.
 
-Performs web research using Google Serper API and Playwright browser automation. Async agent built on LangChain tool-calling.
+### Project Librarian
 
-### Project Librarian (`agents/project_librarian/`)
+The project librarian is the repo-specific subsystem that makes the assistant "project-aware." `ProjectMapper` incrementally refreshes a hierarchical module summary tree instead of re-summarizing the whole codebase every turn.
 
-Analyzes a project's codebase incrementally and builds a context summary tree. Key flow:
+High-level mapping flow:
+1. Discover tracked Python files and compute current hashes
+2. Diff against stored hashes to identify added/changed/deleted files
+3. Rebuild only the affected branches of the `ModuleContext` tree
+4. Summarize changed files and modules bottom-up
+5. Generate a project-wide context document from both the module summaries and a filesystem structure snapshot
+6. Persist cache outputs with hashes written last
 
-1. Discover Python files and compute SHA-256 hashes
-2. Compare against cached hashes to find changed files
-3. Parse changed files with AST to extract classes/functions
-4. Re-summarize changed files → modules → parent modules (bottom-up)
-5. Persist updated hashes and context to `.codemonkey/`
+Cache files live under the target project's `.codemonkey/`:
 
-Key classes:
-
-- `ProjectMapper` — orchestrates the full scan-diff-summarize cycle
-- `Summarizer` — LLM-based summarization at file, module, and project levels
-- `CacheManager` — atomic reads/writes of `.codemonkey/` cache files
-- `CodeExtractor` — AST-based extraction of classes and functions (2 levels deep)
-- `ProjectFileHashes` — tracks per-file SHA-256 hashes with change detection
-
-**Cache save order is enforced**: `code_context.json` → `project_context.md` → `file_hashes.json` (hashes last, so an interrupted run re-summarizes rather than skipping changed files).
-
-### Cache Layout (`.codemonkey/`)
-
+```text
+.codemonkey/file_hashes.json
+.codemonkey/code_context.json
+.codemonkey/project_context.md
 ```
-file_hashes.json     # {relative_path: sha256_hash}
-code_context.json    # ModuleContext tree (summaries per file/module)
-project_context.md   # Full project overview text
-```
 
-### Shared Utilities (`code_monkey/utils/`)
+The write order matters: code context and project context are saved before file hashes so an interrupted mapping run will re-summarize instead of falsely treating stale cache as current.
 
-- `task_result.py` — generic `TaskResult` for progress tracking across agents
-- `langchain_utils.py` — LangChain helpers shared between agents
-- `json_utils.py` — JSON parsing utilities
+### Supporting agents
 
-File discovery exclusions are governed by `IGNORED_DIRS` in `agents/project_librarian/utils/constants.py` (covers `.git`, `venv`, `__pycache__`, IDE dirs, `.codemonkey`, etc.).
-
-### Orchestrator Tools (`code_monkey/graph/tools/`)
-
-The orchestrator has access to three tool groups:
-
-- `bash_tool.py` — `ShellTool` scoped to the project root, with `ask_human_input=True` (every bash command requires user approval)
-- `file_tools.py` — `ReadFileTool` and `WriteFileTool`, also scoped to the project root
-- `web_researcher_tool.py` — delegates to the Web Researcher agent
+- `agents/chat_summarizer/` maintains a rolling summary of older conversation history so checkpoints stay useful without forcing every turn to replay the full transcript.
+- `agents/tester/` is a separate verification agent that checks whether the assistant completed the user's request, not just whether code compiles.
+- `agents/web_researcher/` is an async research agent that combines Google Serper search results with Playwright browser tools.
 
 ## Models
 
-`code_monkey/models/models.py` provides `get_openai_model()` (default `gpt-4o`) and `get_minimax_model()` (MiniMax via Anthropic-compatible API). `ModelConfig` in `models/model_config.py` assigns models per role: orchestrator → `gpt-4o`, summarizer and web researcher → `gpt-4o-mini`.
+`ModelConfig` is the central place that decides which model each role uses:
+
+- orchestrator: `gpt-4.1`
+- tester: `gpt-4.1`
+- project summarizer: `gpt-4o-mini`
+- chat summarizer: `gpt-4o-mini`
+- web researcher: `gpt-4o-mini`
+
+`code_monkey/models/models.py` also exposes helpers for Ollama and MiniMax-compatible models, but the default app wiring currently uses OpenAI chat models.
 
 ## Testing
 
-Tests mirror source structure under `tests/`. Key fixtures in `tests/conftest.py`:
-- `mock_project_template_root` (session-scoped) — points to `mock_project/template/crewai_trading_strategy/`
-- `mock_project_working_copy` (function-scoped) — isolated copy of the template for each test
+Tests mirror the source tree under `tests/`. Useful anchors:
 
-Integration tests (`test_project_mapper_integration.py`) use real filesystem and real utilities but mock the LLM at the boundary. The mock LLM returns deterministic strings encoding the summarized names so tests can assert on exact outputs.
+- `tests/conftest.py` defines the mock-project fixtures used by Project Librarian tests
+- `tests/graph/` covers graph composition and node behavior
+- `tests/e2e/` exercises end-to-end flows like mapping, persistence, web research, and coding tasks
 
-**Do not run `tests/agents/project_librarian/test_project_mapper_real_llm.py` as part of the test suite.** It makes real LLM API calls and is slow and expensive. Only run it manually when explicitly testing the real LLM mapper path:
+Project Librarian integration tests use the real filesystem and cache flow but mock the LLM at the boundary with deterministic summaries. That makes them the best reference when changing incremental mapping behavior.
 
-```bash
-uv run pytest tests/agents/project_librarian/test_project_mapper_real_llm.py -v
-```
+Do not include `tests/agents/project_librarian/test_project_mapper_real_llm.py` in routine test runs; it is explicitly for manual real-LLM validation.
