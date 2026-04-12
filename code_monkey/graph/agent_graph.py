@@ -1,41 +1,26 @@
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any, cast
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
 from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import CustomStreamPart, StreamPart, UpdatesStreamPart
+from langgraph.types import StreamPart
 
 from code_monkey.graph.debug_callback import DebugCallbackHandler
 from code_monkey.graph.default_nodes_provider import DefaultNodesProvider
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
+from code_monkey.graph.stream_types import StreamChunk
+from code_monkey.graph.streaming import is_visible_ai_message, stream_chunks_from_part
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.utils.log_utils import get_formatted_logger
 
 logger = get_formatted_logger(__name__)
 
 DEBUG = False
-
-
-@dataclass
-class StreamChunk:
-    content: str
-    kind: Literal["assistant", "warning"] = "assistant"
-
-
-def _is_text_ai_message(msg: BaseMessage) -> bool:
-    """Return True for AIMessages that carry visible text (no tool calls)."""
-    return (
-        isinstance(msg, AIMessage)
-        and isinstance(msg.content, str)
-        and bool(msg.content)
-        and not msg.tool_calls
-    )
 
 
 class AgentGraph:
@@ -87,13 +72,8 @@ class AgentGraph:
             ),
         )
         async for part in stream:
-            if part["type"] == "custom":
-                custom_chunk = self._custom_stream_chunk(part)
-                if custom_chunk is not None:
-                    yield custom_chunk
-            elif part["type"] == "updates":
-                for chunk in self._assistant_chunks_from_updates(part):
-                    yield chunk
+            for chunk in stream_chunks_from_part(part):
+                yield chunk
 
     async def aget_history(self) -> AsyncIterator[tuple[str, str]]:
         """Yield (role, content) pairs from the persisted checkpoint."""
@@ -107,29 +87,8 @@ class AgentGraph:
                 and msg.content
             ):
                 yield "user", msg.content
-            elif _is_text_ai_message(msg) and isinstance(msg.content, str):
+            elif is_visible_ai_message(msg) and isinstance(msg.content, str):
                 yield "assistant", msg.content
-
-    def _assistant_chunks_from_updates(
-        self, part: UpdatesStreamPart
-    ) -> list[StreamChunk]:
-        chunks: list[StreamChunk] = []
-        for node_update in part["data"].values():
-            if not isinstance(node_update, dict):
-                continue
-            for msg in node_update.get("messages", []):
-                if _is_text_ai_message(msg):
-                    chunks.append(StreamChunk(content=msg.content, kind="assistant"))
-        return chunks
-
-    def _custom_stream_chunk(self, part: CustomStreamPart) -> StreamChunk | None:
-        if not isinstance(part["data"], dict):
-            return None
-        content = part["data"].get("content")
-        kind = part["data"].get("kind")
-        if not isinstance(content, str) or kind not in ("assistant", "warning"):
-            return None
-        return StreamChunk(content=content, kind=kind)
 
     async def ahas_checkpoint(self) -> bool:
         """Return True if a persisted checkpoint exists."""

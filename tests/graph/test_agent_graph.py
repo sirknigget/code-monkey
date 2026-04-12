@@ -8,8 +8,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 
 from code_monkey.agents.tester.tester import TesterResult
-from code_monkey.graph.agent_graph import AgentGraph, StreamChunk
+from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.nodes.review_router_node import make_review_router_node
+from code_monkey.graph.stream_types import StreamChunk
 from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.review_policy import MAX_REVIEW_CYCLES
 from code_monkey.graph.state import ChatbotState
