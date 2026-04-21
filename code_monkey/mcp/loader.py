@@ -10,14 +10,14 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from code_monkey.mcp.config import DEFAULT_MCP_CONFIG_PATH, load_mcp_config
 
 
-@dataclass
+@dataclass(frozen=True)
 class MCPServerSessionHandle:
     server_name: str
     tools: list[BaseTool]
     session: Any
 
 
-@dataclass
+@dataclass(frozen=True)
 class MCPClientContext:
     errors: list[str] = field(default_factory=list)
     sessions: list[MCPServerSessionHandle] = field(default_factory=list)
@@ -35,7 +35,6 @@ class MCPLoader:
         self._config_path = config_path
 
     async def __call__(self) -> MCPClientContext:
-        errors: list[str] = []
         try:
             connections = load_mcp_config(self._config_path)
         except Exception as e:
@@ -44,7 +43,8 @@ class MCPLoader:
             )
 
         client = MultiServerMCPClient(connections=connections)
-        context = MCPClientContext(errors=errors)
+        errors: list[str] = []
+        sessions: list[MCPServerSessionHandle] = []
         aggregate_exit_stack = AsyncExitStack()
 
         for server_name in connections:
@@ -59,7 +59,7 @@ class MCPLoader:
                 continue
 
             aggregate_exit_stack.push_async_exit(server_exit_stack.pop_all())
-            context.sessions.append(
+            sessions.append(
                 MCPServerSessionHandle(
                     server_name=server_name,
                     tools=tools,
@@ -67,5 +67,8 @@ class MCPLoader:
                 )
             )
 
-        context._exit_stack = aggregate_exit_stack
-        return context
+        return MCPClientContext(
+            errors=errors,
+            sessions=sessions,
+            _exit_stack=aggregate_exit_stack,
+        )
