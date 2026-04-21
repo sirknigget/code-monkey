@@ -23,6 +23,7 @@ from pydantic import PrivateAttr
 
 from code_monkey.graph.checkpointer import CheckpointerResult
 from code_monkey.main import setup
+from code_monkey.mcp.loader import MCPClientContext
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.protocol import InputEvent
 
@@ -248,11 +249,16 @@ def make_sqlite_checkpointer_factory(db_path: Path):
     return factory
 
 
+async def empty_mcp_client_factory() -> MCPClientContext:
+    return MCPClientContext()
+
+
 async def run_session(
     project_root: Path,
     inputs: list[InputEvent],
     db_path: Path,
     model_config: ModelConfig | None = None,
+    mcp_client_factory=None,
 ) -> MockUI:
     """Run one setup() session and return the MockUI with all recorded messages."""
     ui = MockUI(inputs)
@@ -260,6 +266,7 @@ async def run_session(
         project_root=str(project_root),
         ui=ui,
         checkpointer_factory=make_sqlite_checkpointer_factory(db_path),
+        mcp_client_factory=mcp_client_factory or empty_mcp_client_factory,
         model_config=model_config or FakeModelConfig(),
     )
     return ui
