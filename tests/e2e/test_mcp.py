@@ -10,9 +10,14 @@ from code_monkey.ui.protocol import InputEvent
 
 
 @pytest.mark.asyncio
-async def test_mcp_stdio_server_tools_execute_end_to_end(project_dir: Path, db_path: Path, tmp_path: Path) -> None:
+async def test_mcp_stdio_server_tools_execute_end_to_end(
+    project_dir: Path,
+    db_path: Path,
+    tmp_path: Path,
+    pytestconfig,
+) -> None:
     server_path = tmp_path / "two_tools_server.py"
-    fixture_source = Path(__file__).with_name("mcp_servers") / "two_tools_server.py"
+    fixture_source = pytestconfig.rootpath / "tests" / "e2e" / "mcp_servers" / "two_tools_server.py"
     server_path.write_text(fixture_source.read_text())
 
     config_path = tmp_path / "mcp.json"
