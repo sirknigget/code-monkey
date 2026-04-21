@@ -48,6 +48,10 @@ class MCPLoader:
         aggregate_exit_stack = AsyncExitStack()
 
         for server_name in connections:
+            # Keep each server session on its own temporary stack until that
+            # server finishes loading tools successfully. If tool loading fails
+            # after the session opens, we need to close only that session
+            # immediately without touching already-successful servers.
             server_exit_stack = AsyncExitStack()
             try:
                 session_cm = client.session(server_name)
@@ -58,6 +62,9 @@ class MCPLoader:
                 errors.append(f"Failed to initialize MCP server '{server_name}': {e}")
                 continue
 
+            # Transfer ownership of this server's cleanup only after the full
+            # per-server setup succeeds, so the aggregate context owns only
+            # live sessions that should remain open for graph execution.
             aggregate_exit_stack.push_async_exit(server_exit_stack.pop_all())
             sessions.append(
                 MCPServerSessionHandle(
