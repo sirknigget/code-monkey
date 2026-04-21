@@ -34,10 +34,11 @@ async def test_mcp_stdio_server_tools_execute_end_to_end(
         )
     )
 
+    output_path = project_dir / "mcp-output.txt"
     config = FakeModelConfig(
         orchestrator_responses=[
-            _mcp_add_call(),
-            "MCP tool result: 7",
+            _mcp_write_result_call(str(output_path), "MCP wrote this text."),
+            "MCP tool finished.",
         ]
     )
 
@@ -49,22 +50,23 @@ async def test_mcp_stdio_server_tools_execute_end_to_end(
         mcp_client_factory=MCPLoader(config_path),
     )
 
+    assert output_path.read_text() == "MCP wrote this text."
     assert ui.assistant_messages() == [
         "[map_project_node] mapping skipped (no modified files)",
-        "MCP tool result: 7",
+        "MCP tool finished.",
     ]
     assert ui.system_messages() == ["Shutting down..."]
 
 
-def _mcp_add_call():
+def _mcp_write_result_call(file_path: str, text: str):
     from langchain_core.messages import AIMessage
 
     return AIMessage(
         content="",
         tool_calls=[
             {
-                "name": "mcp_add",
-                "args": {"a": 3, "b": 4},
+                "name": "mcp_write_result",
+                "args": {"file_path": file_path, "text": text},
                 "id": "call_mcp_1",
                 "type": "tool_call",
             }
