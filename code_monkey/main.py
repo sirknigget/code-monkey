@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from code_monkey.controller.controller import Controller
 from code_monkey.graph.agent_graph import AgentGraph
 from code_monkey.graph.checkpointer import CheckpointerResult, make_checkpointer
+from code_monkey.mcp.loader import MCPClientContext, MCPLoader
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.ui.impl.cli_simple import SimpleCliChatbotUI
 from code_monkey.ui.protocol import ChatbotUI
@@ -25,10 +26,15 @@ class CheckpointerFactory(Protocol):
     async def __call__(self) -> CheckpointerResult: ...
 
 
+class MCPClientFactory(Protocol):
+    async def __call__(self) -> MCPClientContext: ...
+
+
 async def setup(
     project_root: str,
     ui: ChatbotUI,
     checkpointer_factory: CheckpointerFactory,
+    mcp_client_factory: MCPClientFactory,
     model_config: ModelConfig,
 ) -> None:
     logger.info(
@@ -43,23 +49,35 @@ async def setup(
         return
 
     thread_id = os.path.abspath(project_root)
-    logger.debug("Creating agent graph...")
-    graph = await AgentGraph.create(
-        checkpointer=result.checkpointer,
-        project_root=project_root,
-        model_config=model_config,
-        thread_id=thread_id,
-    )
+    graph: AgentGraph | None = None
     try:
-        logger.debug("Running controller...")
-        await Controller(ui, graph).run()
+        async with await mcp_client_factory() as mcp_context:
+            for error in mcp_context.errors:
+                ui.show_error(error)
+            for session in mcp_context.sessions:
+                tool_names = ", ".join(tool.name for tool in session.tools)
+                ui.system_message(
+                    f"Loaded MCP server: {session.server_name}\n\tTools: {tool_names}"
+                )
+
+            logger.debug("Creating agent graph...")
+            graph = await AgentGraph.create(
+                checkpointer=result.checkpointer,
+                project_root=project_root,
+                model_config=model_config,
+                mcp_sessions=mcp_context.sessions,
+                thread_id=thread_id,
+            )
+            logger.debug("Running controller...")
+            await Controller(ui, graph).run()
     except Exception as e:
         logger.exception("Fatal error in main loop")
         ui.show_error(f"Fatal error: {e}")
     finally:
         logger.debug("Shutting down...")
         ui.system_message("Shutting down...")
-        await graph.teardown()
+        if graph is not None:
+            await graph.teardown()
         await result.checkpointer.conn.close()
 
 
@@ -86,6 +104,7 @@ def main() -> None:
                 project_root=project_root,
                 ui=SimpleCliChatbotUI(),
                 checkpointer_factory=make_checkpointer,
+                mcp_client_factory=MCPLoader(),
                 model_config=ModelConfig(),
             )
         )

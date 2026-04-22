@@ -15,6 +15,7 @@ from code_monkey.graph.nodes_provider import NodesProvider
 from code_monkey.graph.state import ChatbotState
 from code_monkey.graph.stream_types import StreamChunk
 from code_monkey.graph.streaming import is_visible_ai_message, stream_chunks_from_part
+from code_monkey.mcp.loader import MCPServerSessionHandle
 from code_monkey.models.model_config import ModelConfig
 from code_monkey.utils.log_utils import get_formatted_logger
 
@@ -42,10 +43,15 @@ class AgentGraph:
         checkpointer: BaseCheckpointSaver,
         project_root: str,
         model_config: ModelConfig,
+        mcp_sessions: list[MCPServerSessionHandle] | None = None,
         thread_id: str = "session",
     ) -> "AgentGraph":
         """Async factory: creates all nodes and tools, returns AgentGraph."""
-        nodes_provider = await DefaultNodesProvider.create(project_root, model_config)
+        nodes_provider = await DefaultNodesProvider.create(
+            project_root,
+            model_config,
+            mcp_sessions=mcp_sessions,
+        )
         return cls(nodes_provider, checkpointer, thread_id)
 
     async def teardown(self) -> None:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 from langgraph.types import StreamWriter
 
@@ -19,7 +20,15 @@ from code_monkey.graph.state import ChatbotState
 from code_monkey.graph.tools.bash_tool import create_bash_tool
 from code_monkey.graph.tools.file_tools import create_file_tools
 from code_monkey.graph.tools.web_researcher_tool import web_researcher_tool
+from code_monkey.mcp.loader import MCPServerSessionHandle
 from code_monkey.models.model_config import ModelConfig
+
+
+def _flatten_mcp_tools(sessions: list[MCPServerSessionHandle]) -> list[BaseTool]:
+    tools: list[BaseTool] = []
+    for session in sessions:
+        tools.extend(session.tools)
+    return tools
 
 
 class DefaultNodesProvider(NodesProvider):
@@ -43,15 +52,20 @@ class DefaultNodesProvider(NodesProvider):
 
     @classmethod
     async def create(
-        cls, project_root: str, model_config: ModelConfig
+        cls,
+        project_root: str,
+        model_config: ModelConfig,
+        mcp_sessions: list[MCPServerSessionHandle] | None = None,
     ) -> "DefaultNodesProvider":
         researcher = await WebResearcher.create(
             model=model_config.web_researcher_model()
         )
+        mcp_tools = _flatten_mcp_tools(mcp_sessions or [])
         tools = [
             web_researcher_tool,
             *create_file_tools(root_dir=project_root),
             create_bash_tool(root_dir=project_root),
+            *mcp_tools,
         ]
         tool_node = ToolNode(tools)
         orchestrator_node_fn = make_orchestrator_node(

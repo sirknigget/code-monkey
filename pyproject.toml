@@ -30,6 +30,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.0.3",
     "langchain-experimental>=0.4.1",
     "aiosqlite>=0.22.1",
+    "langchain-mcp-adapters>=0.1.9",
 ]
 [tool.ruff]
 exclude = ["mock_project", "tests/output", ".claude", "test_sandbox"]
