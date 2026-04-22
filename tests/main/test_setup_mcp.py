@@ -39,22 +39,32 @@ class _FakeMCPContext(MCPClientContext):
 
 
 @pytest.mark.asyncio
-async def test_setup_uses_mcp_factory_and_forwards_sessions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_setup_uses_mcp_factory_and_forwards_sessions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     captured = {}
     checkpointer = _FakeCheckpointer()
-    mcp_sessions = [SimpleNamespace(server_name="alpha", tools=[])]
+    mcp_sessions = [
+        SimpleNamespace(
+            server_name="alpha",
+            tools=[
+                SimpleNamespace(name="first_tool"),
+                SimpleNamespace(name="second_tool"),
+            ],
+        )
+    ]
     mcp_context = _FakeMCPContext(mcp_sessions)
     graph = SimpleNamespace(teardown=_async_noop)
 
     async def fake_checkpointer_factory() -> CheckpointerResult:
-        return CheckpointerResult(
-            checkpointer=cast(AsyncSqliteSaver, checkpointer)
-        )
+        return CheckpointerResult(checkpointer=cast(AsyncSqliteSaver, checkpointer))
 
     async def fake_mcp_factory():
         return mcp_context
 
-    async def fake_graph_create(*, checkpointer, project_root, model_config, mcp_sessions, thread_id):
+    async def fake_graph_create(
+        *, checkpointer, project_root, model_config, mcp_sessions, thread_id
+    ):
         captured["checkpointer"] = checkpointer
         captured["project_root"] = project_root
         captured["mcp_sessions"] = mcp_sessions
@@ -85,6 +95,10 @@ async def test_setup_uses_mcp_factory_and_forwards_sessions(monkeypatch: pytest.
     assert mcp_context.entered is True
     assert mcp_context.exited is True
     assert checkpointer.conn.closed is True
+    assert ui.system_messages() == [
+        "Loaded MCP server: alpha\n\tTools: first_tool, second_tool",
+        "Shutting down...",
+    ]
 
 
 async def _async_noop() -> None:

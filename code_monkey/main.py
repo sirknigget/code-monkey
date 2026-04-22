@@ -54,6 +54,11 @@ async def setup(
         async with await mcp_client_factory() as mcp_context:
             for error in mcp_context.errors:
                 ui.show_error(error)
+            for session in mcp_context.sessions:
+                tool_names = ", ".join(tool.name for tool in session.tools)
+                ui.system_message(
+                    f"Loaded MCP server: {session.server_name}\n\tTools: {tool_names}"
+                )
 
             logger.debug("Creating agent graph...")
             graph = await AgentGraph.create(
