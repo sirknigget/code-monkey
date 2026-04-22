@@ -121,6 +121,31 @@ uv run ruff format .
 uv run pyright
 ```
 
+## MCP support
+
+MCP support is optional and additive.
+
+By default, the app looks for a JSON config at:
+
+```text
+~/.codemonkey/mcp.json
+```
+
+Each top-level key is a server name, and each value is a connection config understood by `langchain-mcp-adapters`. The loader currently accepts transports such as `stdio`, `sse`, `http`, `streamable_http`, `streamable-http`, and `websocket`.
+
+Example stdio server config:
+
+```json
+{
+  "fixture": {
+    "transport": "stdio",
+    "command": "python",
+    "args": ["/absolute/path/to/server.py"],
+    "cwd": "/absolute/path/to/project"
+  }
+}
+```
+
 ## Session behavior
 
 The CLI supports a few slash commands:
@@ -148,6 +173,7 @@ Some of the more important areas:
 - `code_monkey/agents/web_researcher/` — web-research agent using Serper + Playwright
 - `code_monkey/agents/tester/` — review agent that checks whether the assistant actually completed the task
 - `code_monkey/agents/chat_summarizer/` — rolling summary of older conversation history
+- `code_monkey/mcp/` — MCP config loading and session lifecycle management for external tool servers
 - `tests/` — unit, integration, and e2e coverage
 
 ## Shortcomings

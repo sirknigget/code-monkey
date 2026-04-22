@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Project-librarian cache files under the target project's `.codemonkey/`
 - A running chat summary used to compress older conversation history without losing the latest turn
 
-The root `README.md` is minimal, and there are no `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files in this repo.
+The root `README.md` contains the main user-facing overview. There are no `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files in this repo.
 
 ## Development Commands
 
@@ -41,10 +41,12 @@ uv run pyright
 
 ## Runtime Behavior
 
-- `code_monkey/main.py` is the composition root: it loads `.env`, creates the checkpointer, builds `AgentGraph`, and hands it to `Controller`.
+- `code_monkey/main.py` is the composition root: it loads `.env`, creates the checkpointer, opens MCP sessions via `MCPLoader`, builds `AgentGraph`, and hands it to `Controller`.
 - The CLI defaults to `cwd` as the target project root; `--path` overrides it.
 - Conversation checkpoints live in `~/.codemonkey/checkpoints.db` by default and can be overridden with `CODEMONKEY_DB_PATH`.
+- MCP server definitions are loaded from `~/.codemonkey/mcp.json`; missing config means no MCP tools are added, while load/init failures are surfaced to the UI as startup errors.
 - The checkpoint thread ID is the absolute target project path, so each mapped project gets its own persisted chat history even though the DB is global.
+- On startup, each successfully initialized MCP server is announced to the UI with the loaded tool names before the controller loop begins.
 - The controller handles `/clear`, `/map`, and `/exit` at the UI layer:
   - `/clear` deletes the current thread's checkpointed conversation
   - `/map` forces project remapping on the next user turn
@@ -80,12 +82,15 @@ Key behavior:
 
 ### Tooling available to the orchestrator
 
-`DefaultNodesProvider.create()` wires three tool groups into the orchestrator:
+`DefaultNodesProvider.create()` wires four tool groups into the orchestrator:
 - file read/write tools scoped to the target project root
 - a bash tool scoped to the target project root
 - a web researcher tool
+- any MCP tools loaded from configured external servers
 
-Important detail: the bash tool is created with `ask_human_input=True`, so shell commands require explicit user approval.
+Important details:
+- MCP tools are flattened from per-server sessions and appended to the main orchestrator tool list.
+- The bash tool is created with `ask_human_input=True`, so shell commands require explicit user approval.
 
 ### Project Librarian
 
@@ -108,6 +113,14 @@ Cache files live under the target project's `.codemonkey/`:
 ```
 
 The write order matters: code context and project context are saved before file hashes so an interrupted mapping run will re-summarize instead of falsely treating stale cache as current.
+
+### MCP integration
+
+MCP support lives under `code_monkey/mcp/`:
+- `config.py` loads and validates the JSON config at `~/.codemonkey/mcp.json`
+- `loader.py` opens one session per configured server, loads each server's tools through `langchain-mcp-adapters`, keeps successful sessions alive for graph execution, and reports per-server failures without aborting the whole startup path
+
+This means MCP is optional and additive: the app still starts if the config file is missing or one server fails, but only successfully initialized MCP tools are available to the orchestrator.
 
 ### Supporting agents
 
@@ -133,7 +146,9 @@ Tests mirror the source tree under `tests/`. Useful anchors:
 
 - `tests/conftest.py` defines the mock-project fixtures used by Project Librarian tests
 - `tests/graph/` covers graph composition and node behavior
-- `tests/e2e/` exercises end-to-end flows like mapping, persistence, web research, and coding tasks
+- `tests/e2e/` exercises end-to-end flows like mapping, persistence, web research, coding tasks, and MCP tool execution
+- `tests/mcp/` covers MCP config parsing and loader lifecycle behavior
+- `tests/main/test_setup_mcp.py` verifies that startup forwards loaded MCP sessions into `AgentGraph` and reports them to the UI
 
 Project Librarian integration tests use the real filesystem and cache flow but mock the LLM at the boundary with deterministic summaries. That makes them the best reference when changing incremental mapping behavior.
 
