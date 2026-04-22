@@ -9,6 +9,9 @@ from tests.e2e.conftest import FakeModelConfig, run_session
 from code_monkey.ui.protocol import InputEvent
 
 
+FIXTURE_SERVER_PATH = "tests/e2e/mcp_servers/two_tools_server.py"
+
+
 @pytest.mark.asyncio
 async def test_mcp_stdio_server_tools_execute_end_to_end(
     project_dir: Path,
@@ -17,7 +20,7 @@ async def test_mcp_stdio_server_tools_execute_end_to_end(
     pytestconfig,
 ) -> None:
     server_path = tmp_path / "two_tools_server.py"
-    fixture_source = pytestconfig.rootpath / "tests" / "e2e" / "mcp_servers" / "two_tools_server.py"
+    fixture_source = pytestconfig.rootpath / FIXTURE_SERVER_PATH
     server_path.write_text(fixture_source.read_text())
 
     config_path = tmp_path / "mcp.json"
